@@ -25,10 +25,25 @@ export class Asteroid {
             this.maxHits = 1;
         }
         this.isDestroyed = false; // Flag to prevent double-destruction in one frame
+        this.orbit = null;
+    }
+
+    configureOrbit({ clusterId, centerX, centerY, radiusX, radiusY, phase, angularSpeed }) {
+        if (this.size !== 'large') return false;
+        this.orbit = { clusterId, centerX, centerY, radiusX, radiusY, phase, angularSpeed };
+        this.x = centerX + Math.cos(phase) * radiusX;
+        this.y = centerY + Math.sin(phase) * radiusY;
+        return true;
     }
 
     update(dt, worldRules = null) {
-        updateNewtonian(this, dt, undefined, worldRules);
+        if (this.size === 'large' && this.orbit) {
+            this.orbit.phase += this.orbit.angularSpeed * dt;
+            this.x = this.orbit.centerX + Math.cos(this.orbit.phase) * this.orbit.radiusX;
+            this.y = this.orbit.centerY + Math.sin(this.orbit.phase) * this.orbit.radiusY;
+        } else {
+            updateNewtonian(this, dt, undefined, worldRules);
+        }
         this.rotation += this.rotSpeed * dt;
     }
 

@@ -73,6 +73,8 @@ export class Player {
         
         // Power-up System
         this.powerUpCapsules = 0;
+        // Session-local RPG resource. Game owns collection outcomes; Player owns the count.
+        this.scrap = 0;
         this.maxPowerUpSlots = 5;
         this.activeGun = 'Normal'; // Ballistic forms: Normal/Base Gun, Antigun, Double
         this.weaponStreamCounts = { Laser: 0, Antigun: 0, Double: 0, Orb: 0 };
@@ -158,6 +160,12 @@ export class Player {
 
     rollAccuracy() {
         this.accuracyLevel = 1 + Math.floor(Math.random() * 5);
+    }
+
+    addScrap(amount = 1) {
+        const gained = Math.max(0, Math.floor(Number(amount) || 0));
+        this.scrap += gained;
+        return gained;
     }
 
     getXPRequirement(level = this.level) {
