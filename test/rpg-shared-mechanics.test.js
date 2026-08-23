@@ -75,7 +75,7 @@ test('manual missiles require an unlock and own independent tier cooldowns', () 
     assert.equal(first.fireMissile().length, 1);
 });
 
-test('ordinary projectiles use only their live owner lock at 0.7 missile strength', () => {
+test('ordinary projectiles use only their live owner lock at 0.3 missile strength', () => {
     const owner = new Player(0, 0);
     const otherOwner = new Player(0, 0, 2);
     const target = new Player(100, 0, 3);
@@ -88,7 +88,7 @@ test('ordinary projectiles use only their live owner lock at 0.7 missile strengt
     owner.lockedAimTarget = target;
     projectile.update(0.1, [], [owner, otherOwner, target]);
     assert.ok(projectile.vx > 0);
-    assert.equal(STANDARD_PROJECTILE_HOMING_FACTOR, 0.7);
+    assert.equal(STANDARD_PROJECTILE_HOMING_FACTOR, 0.3);
     assert.equal(MISSILE_HOMING_TURN_RATE, 2.7);
 });
 

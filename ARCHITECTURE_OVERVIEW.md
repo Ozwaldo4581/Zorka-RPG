@@ -2,29 +2,21 @@
 
 ## Product foundation
 
-Zorka RPG is a local-first Newtonian shooter built with plain ES modules and Vite. The supported gameplay routes are **Arcade Mode** and **Local PvP Arena**, plus configuration and Options. Adventure and solo Arena are not runtime modes. Their existing main-menu artwork remains presentation-only and noninteractive.
+Zorka RPG is a local-first Newtonian shooter built with plain ES modules and Vite. **Adventure Mode is the sole supported gameplay route; Options is the sole supported configuration route.** The menu artwork for Arcade, Arena, and Local PvP remains visible but disabled and unreachable.
 
-Local PvP retains the 17280 × 9720 wrapped topology. Arcade uses the same dimensions as a bounded world with exactly four immutable outer walls. Both modes consume the same Player, Projectile, collision, damage, reward, population-option, and input contracts.
+Adventure retains the legacy internal `EXPERIMENTAL` discriminator and method names to avoid an unrelated broad rename. Its immutable topology is owned by `world/experimental_rooms.js` and contains only Sector 1 at its established 9600 × 5400 dimensions. Sector 1 has no connections, entrances, doors, hallways, or other sectors; its four complete perimeter walls use the established collision and rendering parameters. The generic space background remains, while the former desk image stack is neither loaded nor rendered.
 
 ## Ownership
 
-- `Game` owns screen flow, world-rule selection, canonical match collections, input/fire coordination, collision outcomes, rewards, Arcade waves, and Arena Options.
-- `Player` owns movement/control state, aim lock, HP/shields/progression, capsule weapons, clip ammunition/reload, and manual missile cooldown.
-- `Projectile` owns flight, lifespan, travel limits, missile fallback targeting, and live owner-lock homing.
-- `world/bounded_arena.js` owns immutable Arcade boundary geometry and its former-Adventure wall tuning values.
-- `physics.js` owns stateless Newtonian, wrapping, swept-wall, penetration correction, slide, and reflection math.
-- Camera, HUD, audio, and menus consume world/gameplay truth and dispatch intent; they do not own it.
+- `Game` owns Adventure session state, canonical collections, spawning, one-NPC population reconciliation, collision outcomes, rewards, damage/death, and screen flow.
+- `Player` owns aim-relative Newtonian movement, lock state, progression, clip ammunition/reload, and manual missile cooldown.
+- `Projectile` owns flight and owner-lock homing.
+- `world/experimental_rooms.js` owns immutable Sector 1 geometry only.
+- `physics.js` remains stateless and owns wall contact, slide, reflection, and swept collision math.
+- Camera, HUD, audio, and menus consume gameplay truth and dispatch intent.
 
-## Shared RPG contracts
+## RPG contracts
 
-Human movement coefficient is `1.0`; NPC movement coefficient is `0.8`. A standard clip begins at 12, Projectile upgrades add 2, Laser derives at 50%, Orb derives at 33.333% with nearest-whole normalization, and empty reload takes 7 seconds.
+Human movement coefficient is `1.0`; NPC movement coefficient is `0.8`. Standard clip capacity begins at 12 and Projectile upgrades add 2. Laser capacity is nearest-whole 50% and Orb capacity is nearest-whole 33.333% of standard capacity. Partial clips persist and empty clips reload in 7 seconds.
 
-Held primary-fire intent attempts one legal shot whenever the established weapon cooldown permits. It continues until intent is released or the clip empties; there is no three-round burst grouping. Partial clips remain partial. NPCs use the same fire eligibility, cooldown, ammunition, and reload contract.
-
-Ordinary shots are ballistic without their owner's valid live lock. With that lock they steer at `0.7` of the missile reference turn rate. Missiles remain at reference strength `1.0`, prefer their owner's lock, and retain missile-owned fallback acquisition.
-
-## Arcade topology
-
-`Game.getWorldRules()` selects `wrap: false`, bounded direct geometry, global spawning, and `ARCADE_BOUNDED_WORLD` for Arcade. The four walls use the historical 32-pixel collision thickness, 0.5-pixel separation epsilon, and four correction passes. Ships correct penetration and slide; asteroids and hazards reflect; swept projectile contact removes ordinary shots and detonates missiles once. Camera, targeting, homing, collision broad phases, blast distance, and spatial audio consume the same non-wrapped rule.
-
-Local PvP continues to select wrapped physics, camera, collision, targeting, and audio geometry.
+Missiles require explicit **E** input after capsule unlock and use Player-owned tier cooldowns of 13, 9, and 5 seconds. Ordinary projectiles remain ballistic without their owner's valid lock and steer at `0.3` of missile turn strength with that lock. Missiles retain reference strength `1.0` and their owner-lock-first fallback behavior.

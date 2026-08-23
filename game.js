@@ -17,6 +17,16 @@ import {
 } from './physics.js';
 import { CircleSpatialHash, forEachNearbyCirclePair } from './world/spatial_hash.js';
 import { ARCADE_BOUNDED_WORLD } from './world/bounded_arena.js';
+import {
+    createExperimentalAreas,
+    createExperimentalDoors,
+    createExperimentalWallSpatialIndexes,
+    EXPERIMENTAL_COLLISION_CATEGORY,
+    EXPERIMENTAL_SHORTCUT_ID,
+    SECTOR_9_BBG_ENCOUNTER,
+    getSector9BBGImageRect,
+    getSector9BBGAnchorWorldPosition
+} from './world/experimental_rooms.js';
 import { DESIGN_WIDTH, DESIGN_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT } from './world_config.js';
 
 export { DESIGN_WIDTH, DESIGN_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT } from './world_config.js';
@@ -330,11 +340,7 @@ export class Game {
             background: await this.loadImage('assets/space_background.webp'),
             explosion: await this.loadImage('assets/explosion_vfx.webp'),
             squidScenery: await this.loadImage('assets/Squid.png'),
-            cranioidScenery: await this.loadImage('assets/Cranioid.png'),
-            schoolDeskBackground: await this.loadImage('assets/SchoolDeskZorka7.png'),
-            schoolDeskTutorial1: await this.loadImage('assets/SchoolDeskFullTutorial1.png'),
-            schoolDeskTutorial2: await this.loadImage('assets/SchoolDeskFullTutorial2.png'),
-            schoolDeskVisor: await this.loadImage('assets/SchoolDeskZorkaVisor3.png')
+            cranioidScenery: await this.loadImage('assets/Cranioid.png')
         };
     }
 
@@ -544,17 +550,8 @@ export class Game {
     }
 
     restartCurrentGameMode() {
-        if (this.gameState === GAME_MODE.EXPERIMENTAL) {
-            this.startExperimentalMode(null, { preserveNewGamePlusCycle: true });
-            return;
-        }
-
-        if (this.gameState === GAME_MODE.ARCADE || this.gameState === 'ARCADE') {
-            this.startArcadeMode();
-            return;
-        }
-
-        this.returnToMenu();
+        if (this.gameState === GAME_MODE.EXPERIMENTAL) this.startExperimentalMode();
+        else this.returnToMenu();
     }
 
     startArcadeMode() {
@@ -869,12 +866,11 @@ export class Game {
         });
 
         // Menu buttons
-        document.getElementById('btn-arcade').addEventListener('click', () => {
-            document.getElementById('main-menu').classList.add('hidden');
-            document.getElementById('arcade-menu').classList.remove('hidden');
-            this.menuIndex = 0;
-            this.lastActiveMenuId = 'arcade-menu';
+        document.getElementById('btn-experimental-start').addEventListener('click', () => {
+            this.startExperimentalMode();
         });
+
+
         document.getElementById('btn-arcade-play').addEventListener('click', () => {
             document.getElementById('arcade-menu').classList.add('hidden');
             this.startArcadeMode();
@@ -887,30 +883,6 @@ export class Game {
         });
 
 
-        document.getElementById('btn-pvp').addEventListener('click', () => {
-            this.pendingMode = 'PVP';
-            document.getElementById('main-menu').classList.add('hidden');
-            document.getElementById('solo-menu').classList.remove('hidden');
-            document.getElementById('controls-selection').classList.remove('hidden');
-            document.getElementById('p2-control-line').classList.remove('hidden');
-            document.getElementById('transformation-setting').classList.add('hidden');
-            
-            // Re-purpose the Solo menu for PVP
-            document.getElementById('arena-bot-label').innerText = 'SELECT NUMBER OF ENEMY BOTS IN THE ARENA';
-            
-            // Hide buttons 7 and 8 for PVP (max 6 bots)
-            document.querySelectorAll('.bot-count-btn').forEach(btn => {
-                const count = parseInt(btn.getAttribute('data-bot-count'));
-                if (count > 6) btn.classList.add('hidden');
-                else btn.classList.remove('hidden');
-            });
-
-            this.updateGamepadStatus();
-            
-            this.selectedBotCount = 0;
-            document.querySelectorAll('.bot-count-btn').forEach(b => b.classList.remove('selected'));
-            this.updateSoloMockLobby(0);
-        });
 
         document.getElementById('btn-solo-back').addEventListener('click', () => {
             document.getElementById('solo-menu').classList.add('hidden');
@@ -2173,7 +2145,6 @@ export class Game {
         for (const npcRoom of this.experimentalRooms.filter(area => Game.prototype.allowsOrdinaryExperimentalNPCPopulation.call(this, area))) {
             Game.prototype.spawnOrdinaryExperimentalRoomNPCs.call(this, npcRoom.id, placedPlayers);
         }
-        Game.prototype.spawnSector9BBGEncounter.call(this);
         Game.prototype.removeStaleOrdinaryExperimentalNPCsFromBlockedRooms.call(this);
         this.asteroids = [];
         this.hazards = [];
@@ -2295,37 +2266,16 @@ export class Game {
         return killer;
     }
 
-    resolveExperimentalOrdinaryNPCDeath(deadNPC, source) {
-        if (!deadNPC?.isOrdinaryExperimentalNPC) return false;
-        const encounter = Game.prototype.getExperimentalEncounterState.call(this, deadNPC.roomId);
-        if (!encounter) return false;
-        const credited = Boolean(Game.prototype.resolveExperimentalHumanKillCredit.call(this, deadNPC, source));
-
+    resolveExperimentalOrdinaryNPCDeath(deadNPC) {
+        if (!deadNPC?.isOrdinaryExperimentalNPC || this.gameState !== GAME_MODE.EXPERIMENTAL) return false;
+        const roomId = deadNPC.roomId;
         Game.prototype.unindexExperimentalEntity.call(this, 'players', deadNPC);
         const deadIndex = this.players.indexOf(deadNPC);
         if (deadIndex !== -1) this.players.splice(deadIndex, 1);
-
-        if (deadNPC.isExperimentalFleeingNPC) return false;
-
-        if (!credited) {
-            if (!encounter.doorUnlocked) {
-                Game.prototype.spawnOrdinaryExperimentalRoomNPCs.call(
-                    this, deadNPC.roomId, this.players, 1,
-                    deadNPC.isExperimentalFleeingNPC ? 'SPECTER' : 'ORDINARY'
-                );
-            }
-            return false;
-        }
-
-        encounter.playerCreditedKills = Math.min(
-            encounter.requiredPlayerKills,
-            encounter.playerCreditedKills + 1
-        );
-        if (encounter.doorUnlocked || encounter.playerCreditedKills < encounter.requiredPlayerKills) return false;
-        encounter.encounterCleared = true;
-        encounter.doorUnlocked = true;
-        encounter.populationSpawned = false;
-        this.experimentalObjectiveMessage = { lines: ['Hallway opened!'], remaining: EXPERIMENTAL_OBJECTIVE_MESSAGE_DURATION };
+        const living = this.players.filter(player =>
+            Game.prototype.isLivingOrdinaryExperimentalRoomEnemy.call(this, player, roomId)
+        ).length;
+        if (living < 1) this.spawnOrdinaryExperimentalRoomNPCs(roomId, this.players, 1, 'ORDINARY');
         return true;
     }
 
@@ -2585,17 +2535,7 @@ export class Game {
     }
 
     showExperimentalObjectiveMessage() {
-        const human = (this.players || []).find(player => !player.isNPC);
-        const encounter = Game.prototype.getExperimentalEncounterState.call(this, human?.roomId);
-        this.experimentalObjectiveMessage = {
-            lines: encounter && !encounter.doorUnlocked
-                ? [
-                    'Defeat the required enemies yourself to open the hallway.',
-                    `Player kills remaining: ${Math.max(0, encounter.requiredPlayerKills - encounter.playerCreditedKills)}`
-                ]
-                : ['The Princess is in Sector 9!', 'Save the Princess!', 'Save the Galaxy!'],
-            remaining: EXPERIMENTAL_OBJECTIVE_MESSAGE_DURATION
-        };
+        this.experimentalObjectiveMessage = null;
     }
 
     updateExperimentalMessages(dt) {
@@ -2735,20 +2675,11 @@ export class Game {
         return context.npcCandidatesByArea.get(areaId);
     }
 
-    startExperimentalMode(profile = null, options = {}) {
-        const selectedProfile = profile || (Number.isInteger(this.selectedExperimentalProfileSlot)
-            ? this.experimentalProfiles.getProfile(this.selectedExperimentalProfileSlot)
-            : null);
-        if (!selectedProfile) {
-            this.showExperimentalProfileSelection('Select or create a profile to begin.');
-            return false;
-        }
-        this.experimentalNewGamePlusCycle = Math.max(0, Math.floor(Number(selectedProfile.newGamePlusCycle) || 0));
-        this.experimentalUnlockedShortcutIds = new Set(selectedProfile.unlockedShortcutIds || []);
+    startExperimentalMode() {
+        this.experimentalNewGamePlusCycle = 0;
+        this.experimentalUnlockedShortcutIds = new Set();
         this.closePauseMenu();
         this.hideArcadeGameOver();
-        this.arcadeGameOver = false;
-        this.arcadeResult = null;
         Game.prototype.hideVictoryScreen.call(this);
         this.clearExperimentalState();
         this.players = [];
@@ -2759,29 +2690,15 @@ export class Game {
         this.vfx = [];
         this.setupExperimentalMatch();
         const human = this.players.find(player => !player.isNPC);
-        if (!human) {
-            this.showExperimentalProfileSelection('Unable to create the selected pilot.');
-            return false;
-        }
-        human.name = selectedProfile.name;
-        human.applyPersistentProgression(selectedProfile);
-        human.resetTransientLifeState();
+        if (!human) return false;
+        human.name = 'PLAYER 1';
         human.color = chooseRandomPlayerColor();
+        human.resetTransientLifeState();
         this.initializeExperimentalWorldState();
-
-        // Adventure/Experimental mode entry uses the same human materialization
-        // sequence as a post-death respawn. World initialization has placed the
-        // player at the center of Sector 1 using the final human color for NPCs.
-        human.previousX = human.x;
-        human.previousY = human.y;
-        human.startExperimentalRespawnPhase(human.x, human.y);
-        Game.prototype.spawnExperimentalPlayerSpecterRing.call(this, human);
-
-        human.onPersistentProgressionChanged = player => Game.prototype.saveExperimentalProfile.call(this, player);
         document.getElementById('menu-overlay').classList.add('hidden');
         this.experimentalCameraState = { previousZoom: this.camera.zoom };
         this.camera.zoom = DEFAULT_GAMEPLAY_ZOOM;
-        this.camera.follow(this.players[0]);
+        this.camera.follow(human);
         this.camera.useDirectWorld();
         Game.prototype.beginGameplayMusic.call(this);
         this.resetMouseLockInput();
@@ -5403,78 +5320,7 @@ export class Game {
     }
 
     getExperimentalDialogueSequences() {
-        return [
-            {
-                id: 'squid-greeting',
-                order: 2,
-                speaker: 'squid',
-                triggerRadius: 1200,
-                holdAfterLastLine: 8,
-                lines: [
-                    {
-                        text: 'Yo whats up, Earthling? Going after Princess Zorka? Thats mighty awesome of you! Good luck on your quest!',
-                        revealAt: 0,
-                        textOffsetX: -200,
-                        textOffsetY: -800,
-                        pointerOffsetX: 0,
-                        pointerOffsetY: 0,
-                        maxTextWidth: 560
-                    }
-                ]
-            },
-            {
-                id: 'squid-direction',
-                order: 3,
-                speaker: 'squid',
-                triggerRadius: 1200,
-                holdAfterLastLine: 4,
-                lines: [
-                    {
-                        text: 'All roads lead to Sector 9, my dude.',
-                        revealAt: 0,
-                        textOffsetX: -200,
-                        textOffsetY: 630,
-                        pointerOffsetX: 0,
-                        pointerOffsetY: 0,
-                        maxTextWidth: 620
-                    }
-                ]
-            },
-            {
-                id: 'upper-cranioid-cheer',
-                order: 1,
-                speaker: 'upperCranioid',
-                triggerRadius: 1450,
-                holdAfterLastLine: 4,
-                lines: [
-                    { text: 'Are they going for Zorka?!', revealAt: 0.0, textOffsetX: -520, textOffsetY: -360, maxTextWidth: 410 },
-                    { text: 'No way!', revealAt: 0.25, textOffsetX: 220, textOffsetY: -180, maxTextWidth: 280 },
-                    { text: 'Cool!', revealAt: 0.45, textOffsetX: 180, textOffsetY: 80, maxTextWidth: 240 },
-                    { text: 'Get Zorka!', revealAt: 0.65, textOffsetX: 230, textOffsetY: 155, maxTextWidth: 320 },
-                    { text: 'Rad!', revealAt: 0.85, textOffsetX: -420, textOffsetY: 180, maxTextWidth: 240 },
-                    { text: 'Save the Princess!', revealAt: 1.05, textOffsetX: -270, textOffsetY: 300, maxTextWidth: 500 },
-                    { text: 'Rad!', revealAt: 1.35, textOffsetX: -360, textOffsetY: 400, maxTextWidth: 240 }
-                ]
-            },
-            {
-                id: 'lower-cranioid-apology',
-                order: 4,
-                speaker: 'lowerCranioid',
-                triggerRadius: 1450,
-                holdAfterLastLine: 1,
-                lines: [
-                    { text: 'what smells?', revealAt: 0.0, textOffsetX: -250, textOffsetY: -340, maxTextWidth: 330 },
-                    { text: 'sorry', revealAt: 0.95, textOffsetX: -360, textOffsetY: -90, maxTextWidth: 240 },
-                    { text: 'sorry', revealAt: 1.25, textOffsetX: 220, textOffsetY: -40, maxTextWidth: 240 },
-                    { text: 'sorry', revealAt: 1.65, textOffsetX: -390, textOffsetY: 150, maxTextWidth: 240 },
-                    { text: 'sorry', revealAt: 1.85, textOffsetX: 230, textOffsetY: 120, maxTextWidth: 240 },
-                    { text: 'sorry', revealAt: 2.05, textOffsetX: -350, textOffsetY: 280, maxTextWidth: 240 },
-                    { text: 'sorry', revealAt: 2.1, textOffsetX: 220, textOffsetY: 255, maxTextWidth: 240 },
-                    { text: 'sorry', revealAt: 3.10, textOffsetX: -100, textOffsetY: 390, maxTextWidth: 240 },
-                    { text: 'sorry', revealAt: 5.8, textOffsetX: 80, textOffsetY: 450, maxTextWidth: 240 }
-                ]
-            }
-        ];
+        return [];
     }
 
     updateExperimentalDialogue(dt) {
@@ -5521,223 +5367,16 @@ export class Game {
         state.activeElapsed = 0;
     }
 
-    drawExperimentalSectorBackground(ctx, camera, renderContext = null) {
-        if (this.gameState !== GAME_MODE.EXPERIMENTAL) return;
-        if (!this.assets.schoolDeskBackground) return;
-
-        const currentArea = renderContext?.currentArea
-            || Game.prototype.getExperimentalRenderArea.call(this);
-        if (!currentArea || ![1, SECTOR_9_BBG_ENCOUNTER.roomNumber].includes(currentArea.roomNumber)) return;
-
-        if (currentArea.roomNumber === SECTOR_9_BBG_ENCOUNTER.roomNumber) {
-            const rect = getSector9BBGImageRect(currentArea);
-            const image = this.assets.bbgScenery;
-            if (!rect || !image) return;
-            ctx.save();
-            camera.apply(ctx, rect.centerX, rect.centerY);
-            ctx.globalAlpha = 0.9;
-            ctx.drawImage(image, -rect.width / 2, -rect.height / 2, rect.width, rect.height);
-            ctx.restore();
-            if (typeof window !== 'undefined' && window.ZORKA_DEBUG_BBG_ANCHORS) {
-                for (const anchor of SECTOR_9_BBG_ENCOUNTER.anchors) {
-                    const position = getSector9BBGAnchorWorldPosition(currentArea, anchor);
-                    if (!position) continue;
-                    ctx.save();
-                    camera.apply(ctx, position.x, position.y);
-                    ctx.strokeStyle = '#00ffff';
-                    ctx.lineWidth = 4;
-                    ctx.beginPath();
-                    ctx.arc(0, 0, 20, 0, Math.PI * 2);
-                    ctx.stroke();
-                    ctx.restore();
-                }
-            }
-            return;
-        }
-
-        const { left, right, top, bottom } = currentArea.bounds;
-        const width = right - left;
-        const height = bottom - top;
-        const centerX = left + width / 2;
-        const centerY = top + height / 2;
-
-        ctx.save();
-        camera.apply(ctx, centerX, centerY);
-        ctx.globalAlpha = 0.4;
-
-        const image = this.assets.schoolDeskBackground;
-        const imageScale = 1.5;
-
-        const drawWidth = image.naturalWidth * imageScale;
-        const drawHeight = image.naturalHeight * imageScale;
-
-        // Preserve the original room-local placement as normalized offsets.
-        const offsetX = width * -0.03858564814814815;
-        const offsetY = height * 0.0806172839506172839;
-
-        // Keep the original desk fixed and place the two tutorial desks at
-        // equal room-local spacing to its left and right.
-        const sideDeskSpacing = width / 3;
-        const drawSideDesk = (sideImage, centerOffsetX) => {
-            if (!sideImage) return;
-            const sideDrawWidth = sideImage.naturalWidth * imageScale;
-            const sideDrawHeight = sideImage.naturalHeight * imageScale;
-            ctx.drawImage(
-                sideImage,
-                -sideDrawWidth / 2 + offsetX + centerOffsetX,
-                -sideDrawHeight / 2 + offsetY,
-                sideDrawWidth,
-                sideDrawHeight
-            );
-        };
-
-        drawSideDesk(this.assets.schoolDeskTutorial1, -sideDeskSpacing);
-
-        ctx.drawImage(
-            image,
-            -drawWidth / 2 + offsetX,
-            -drawHeight / 2 + offsetY,
-            drawWidth,
-            drawHeight
-        );
-
-        drawSideDesk(this.assets.schoolDeskTutorial2, sideDeskSpacing);
-
-        const localPlayer = this.players.find(player => !player.isNPC);
-        const visorImage = this.assets.schoolDeskVisor;
-
-        if (localPlayer && visorImage) {
-            const visorColor = localPlayer.color || '#00ffff';
-            const visorWidth = visorImage.naturalWidth;
-            const visorHeight = visorImage.naturalHeight;
-
-            if (
-                !this.schoolDeskVisorTint
-                || this.schoolDeskVisorTint.color !== visorColor
-                || this.schoolDeskVisorTint.width !== visorWidth
-                || this.schoolDeskVisorTint.height !== visorHeight
-            ) {
-                const tintedCanvas = document.createElement('canvas');
-                tintedCanvas.width = visorWidth;
-                tintedCanvas.height = visorHeight;
-
-                const tintedCtx = tintedCanvas.getContext('2d');
-                tintedCtx.drawImage(visorImage, 0, 0);
-                tintedCtx.globalCompositeOperation = 'source-in';
-                tintedCtx.fillStyle = visorColor;
-                tintedCtx.fillRect(0, 0, visorWidth, visorHeight);
-
-                this.schoolDeskVisorTint = {
-                    canvas: tintedCanvas,
-                    color: visorColor,
-                    width: visorWidth,
-                    height: visorHeight
-                };
-            }
-
-            ctx.drawImage(
-                this.schoolDeskVisorTint.canvas,
-                -drawWidth / 2 + offsetX,
-                -drawHeight / 2 + offsetY,
-                drawWidth,
-                drawHeight
-            );
-        }
-
-        ctx.restore();
+    drawExperimentalSectorBackground() {
+        // Sector 1 intentionally uses only the generic space background.
     }
 
-    drawExperimentalScenery(ctx, camera, renderContext = null) {
-        if (this.gameState !== GAME_MODE.EXPERIMENTAL) return;
-        const layout = Game.prototype.getExperimentalSceneryLayout.call(this, renderContext);
-        if (!layout) return;
-
-        for (const item of [layout.squid, layout.upperCranioid, layout.lowerCranioid]) {
-            if (!item.image) continue;
-
-            const halfWidth = item.width / 2;
-            const halfHeight = item.height / 2;
-            const visibleHalfWidth = DESIGN_WIDTH / (2 * camera.zoom) + halfWidth;
-            const visibleHalfHeight = DESIGN_HEIGHT / (2 * camera.zoom) + halfHeight;
-
-            if (
-                Math.abs(item.x - camera.x) > visibleHalfWidth
-                || Math.abs(item.y - camera.y) > visibleHalfHeight
-            ) continue;
-
-            ctx.save();
-            camera.apply(ctx, item.x, item.y);
-            ctx.globalAlpha = item.alpha;
-            ctx.drawImage(item.image, -halfWidth, -halfHeight, item.width, item.height);
-            ctx.restore();
-        }
+    drawExperimentalScenery() {
+        // Single-sector Adventure has no campaign scenery composition.
     }
 
-    drawExperimentalDialogue(ctx, camera, renderContext = null) {
-        const state = this.experimentalDialogueState;
-        if (!state?.activeSequenceId) return;
-
-        const layout = Game.prototype.getExperimentalSceneryLayout.call(this, renderContext);
-        if (!layout) return;
-        const sequence = Game.prototype.getExperimentalDialogueSequences.call(this)
-            .find(candidate => candidate.id === state.activeSequenceId);
-        if (!sequence) return;
-
-        const speaker = layout[sequence.speaker];
-        if (!speaker) return;
-
-        const visibleLines = sequence.lines.filter(line => state.activeElapsed >= (line.revealAt || 0));
-        for (const line of visibleLines) {
-            const textX = speaker.x + line.textOffsetX;
-            const textY = speaker.y + line.textOffsetY;
-
-            // Pointer lines remain available per line, but are temporarily disabled.
-            if (line.showPointer) {
-                ctx.save();
-                camera.apply(ctx, speaker.x, speaker.y);
-                ctx.strokeStyle = '#ffffff';
-                ctx.lineWidth = 6;
-                ctx.lineCap = 'round';
-                ctx.shadowColor = '#000000';
-                ctx.shadowBlur = 10;
-                ctx.beginPath();
-                ctx.moveTo(line.pointerOffsetX || 0, line.pointerOffsetY || 0);
-                ctx.lineTo(
-                    line.textOffsetX > 0 ? line.textOffsetX - 24 : line.textOffsetX + line.maxTextWidth + 24,
-                    line.textOffsetY + 18
-                );
-                ctx.stroke();
-                ctx.restore();
-            }
-
-            ctx.save();
-            camera.apply(ctx, textX, textY);
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 42px "Courier New", monospace';
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'top';
-            ctx.shadowColor = '#000000';
-            ctx.shadowBlur = 12;
-            Game.prototype.drawWrappedWorldText.call(this, ctx, line.text, line.maxTextWidth, 50);
-            ctx.restore();
-        }
-    }
-
-    drawWrappedWorldText(ctx, text, maxWidth, lineHeight) {
-        const words = String(text).split(/\s+/);
-        let line = '';
-        let y = 0;
-        for (const word of words) {
-            const testLine = line ? `${line} ${word}` : word;
-            if (line && ctx.measureText(testLine).width > maxWidth) {
-                ctx.fillText(line, 0, y);
-                line = word;
-                y += lineHeight;
-            } else {
-                line = testLine;
-            }
-        }
-        if (line) ctx.fillText(line, 0, y);
+    drawExperimentalDialogue() {
+        // Multi-sector story dialogue was retired with sector progression.
     }
 
     drawExperimentalWalls(ctx, camera, renderContext = null) {
