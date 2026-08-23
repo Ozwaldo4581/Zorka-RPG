@@ -604,16 +604,16 @@
           draggable="false"
         >
         <div class="main-menu-actions">
-          <button class="menu-button" id="btn-experimental-start" aria-label="Adventure" aria-disabled="true" tabindex="-1" data-noninteractive style="pointer-events: none;">
+          <button class="menu-button" id="btn-experimental-start" aria-label="Adventure">
             <img src="assets/SharpieAdventure.png" alt="" draggable="false">
           </button>
-          <button class="menu-button" id="btn-arcade" aria-label="Arcade">
+          <button class="menu-button" id="btn-arcade" aria-label="Arcade" disabled aria-disabled="true" tabindex="-1" data-noninteractive style="pointer-events: none; opacity: 1;">
             <img src="assets/SharpieArcade.png" alt="" draggable="false">
           </button>
           <button class="menu-button" id="btn-solo-open" aria-label="Arena" disabled aria-disabled="true" tabindex="-1" data-noninteractive style="pointer-events: none; opacity: 1;">
             <img src="assets/SharpieArena.png" alt="" draggable="false">
           </button>
-          <button class="menu-button" id="btn-pvp" aria-label="Local PvP Arena">
+          <button class="menu-button" id="btn-pvp" aria-label="Local PvP Arena" disabled aria-disabled="true" tabindex="-1" data-noninteractive style="pointer-events: none; opacity: 1;">
             <img src="assets/SharpieLocalPVPArena.png" alt="" draggable="false">
           </button>
           <button class="menu-button" id="btn-main-options-open" aria-label="Options">
@@ -745,7 +745,6 @@
             <li>Lose all Power Up Capsules on death</li>
             <li>Use Right Click/M2/LT to Lock On to a target</li>
             <li>All missiles seek the Locked On target</li>
-            <li>Find your way to Sector 9 to save the Princess!</li>
           </ul>
           <button class="menu-button help-back-button" id="btn-help-back">BACK</button>
         </div>
@@ -900,7 +899,7 @@
     <div id="victory-screen" class="hidden" role="dialog" aria-modal="true" aria-labelledby="victory-title" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 35; background: rgba(0,0,0,0.94); display: flex; align-items: center; justify-content: center;">
       <div style="background: #050505; border: 2px solid #00ffff; padding: 42px 54px; border-radius: 10px; width: 560px; text-align: center; box-shadow: 0 0 42px rgba(0,255,255,0.45); display: flex; flex-direction: column; gap: 22px; align-items: center;">
         <h1 id="victory-title" style="margin: 0; color: #00ffff; font-size: 2.4rem; letter-spacing: 0.16rem;">Congradulations!</h1>
-        <h2 style="margin: 0 0 10px; color: #ffffff; font-size: 1.7rem; letter-spacing: 0.1rem;">The Princess is Saved!</h2>
+        <h2 style="margin: 0 0 10px; color: #ffffff; font-size: 1.7rem; letter-spacing: 0.1rem;">Adventure Complete</h2>
         <button class="menu-button" id="btn-victory-continue" style="width: 260px;">Continue</button>
         <button class="menu-button" id="btn-victory-new-game-plus" style="width: 260px;">NewGame+</button>
       </div>

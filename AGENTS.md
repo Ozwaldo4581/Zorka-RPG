@@ -2,7 +2,7 @@
 
 You are a JavaScript game-development pair programmer for this repository. Prioritize working, testable progress over perfect process.
 
-This file describes the current repository and protects the ownership boundaries that keep Zorka’s Arcade Mode and Local PvP Mode working from one shared gameplay foundation.
+This file describes the Adventure-only Zorka RPG runtime and its shared gameplay ownership boundaries.
 
 ## Project Baseline
 
@@ -10,12 +10,7 @@ Zorka is a local-first, top-down Newtonian asteroid shooter built with plain ES 
 
 The standard wrapped arena is a **17280 × 9720** world: a 9 × 9 grid of 1920 × 1080 design screens. `DESIGN_WIDTH`, `DESIGN_HEIGHT`, `WORLD_WIDTH`, and `WORLD_HEIGHT` in `game.js` are shared contracts for standard modes.
 
-Current playable game modes are:
-
-- **Local PvP Arena** — local/split-screen play with up to eight ships in the wrapped world.
-- **Arcade Mode** — a one-life progression challenge in the four-wall bounded world.
-
-The solo Arena and Adventure graphics are preserved as noninteractive menu artwork; neither is a runtime mode.
+The sole playable mode is **Adventure Mode**, implemented under the legacy internal `EXPERIMENTAL` identifier. Options remains supported. Adventure contains only Sector 1 with four complete walls and one continuously replaced NPC. Arcade, Arena, and Local PvP menu graphics are presentation-only and noninteractive.
 
 Baseline desktop controls:
 
@@ -45,8 +40,8 @@ Keep these familiar asset locations stable unless asset migration is explicitly 
 - UI, rendering, camera, and audio must not own combat, progression, room membership, or match truth.
 - Do not perform large refactors without explaining the concrete need and asking first.
 - Preserve the shared `Player`, `Projectile`, hazard, collision-result, reward, and input contracts across modes.
-- Local PvP retains standard wrapped-world behavior. Arcade uses the same dimensions with four physical outer walls and direct, non-wrapped geometry.
-- Adventure is not a runtime mode; preserve only its static menu artwork while shared RPG mechanics belong to Player, Projectile, Game, and physics seams.
+- Adventure uses Sector 1 direct geometry and its established four-wall collision system; no other gameplay mode is launchable.
+- Adventure is the sole runtime mode. Preserve shared RPG mechanics in Player, Projectile, Game, and physics seams.
 - Online multiplayer is out of scope. `network_manager.js` is legacy and `Game.network` is intentionally `null` in the active build.
 - For bugs involving hits, destruction, rewards, HP, shields, death, respawn, room transfer, or timing, inspect the owning gameplay path before patching HUD/menu/audio behavior.
 
@@ -74,9 +69,9 @@ Keep these familiar asset locations stable unless asset migration is explicitly 
 - Movement is aim-relative. Human movement coefficient is 1.0 and NPC movement coefficient is 0.8.
 - Player owns its clip: Standard begins at 12, Projectile upgrades add 2, Laser derives at 50%, Orb derives at 33.333% using nearest-whole normalization, and empty reload takes 7 seconds.
 - Player owns manual missile cooldown. Keyboard/mouse Player 1 fires with E; tiers use 13/9/5 seconds. No automatic missile firing or new controller binding.
-- Ordinary projectiles use only their owner's valid live lock at 0.7 missile homing strength.
+- Ordinary projectiles use only their owner's valid live lock at 0.3 missile homing strength.
 - Held primary fire discharges the clip at the established cadence without burst grouping.
-- Adventure was the migration authority for this fork but is not playable and must not own shared runtime behavior.
+- Adventure is playable, while shared runtime behavior remains in the shared owners rather than menu/rendering code.
 
 ## 1) Workflow Expectations
 
