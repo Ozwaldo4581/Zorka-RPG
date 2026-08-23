@@ -101,20 +101,28 @@ test('manual missiles require Player-owned ammunition and fixed reload', () => {
     assert.equal(player.missileAmmo, 1);
 });
 
-test('ordinary projectiles use only their live owner lock at 0.3 missile strength', () => {
+test('Ballistic and Orb projectiles use only their live owner lock at shared strength', () => {
     const owner = new Player(0, 0);
     const otherOwner = new Player(0, 0, 2);
     const target = new Player(100, 0, 3);
-    const projectile = new Projectile(0, 0, 0, -100);
-    projectile.owner = owner;
-    projectile.isBallistic = true;
+    const ballistic = new Projectile(0, 0, 0, -100);
+    ballistic.owner = owner;
+    ballistic.isBallistic = true;
+    const orb = new Projectile(0, 0, 0, -100);
+    orb.owner = owner;
+    orb.isOrb = true;
     otherOwner.lockedAimTarget = target;
-    projectile.update(1, [], [owner, otherOwner, target]);
-    assert.equal(projectile.vx, 0, 'another player lock cannot steer the shot');
+    ballistic.update(1, [], [owner, otherOwner, target]);
+    orb.update(1, [], [owner, otherOwner, target]);
+    assert.equal(ballistic.vx, 0, 'another player lock cannot steer the Ballistic shot');
+    assert.equal(orb.vx, 0, 'another player lock cannot steer the Orb');
 
     owner.lockedAimTarget = target;
-    projectile.update(0.1, [], [owner, otherOwner, target]);
-    assert.ok(projectile.vx > 0);
+    ballistic.update(0.1, [], [owner, otherOwner, target]);
+    orb.update(0.1, [], [owner, otherOwner, target]);
+    assert.ok(ballistic.vx > 0);
+    assert.equal(orb.vx, ballistic.vx, 'Orb and Ballistic consume the same homing coefficient');
+    assert.equal(orb.missileTarget, null, 'Orb does not acquire a Missile fallback target');
     assert.equal(STANDARD_PROJECTILE_HOMING_FACTOR, 0.3);
     assert.equal(MISSILE_HOMING_TURN_RATE, 2.7);
 });

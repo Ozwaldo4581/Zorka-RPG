@@ -78,7 +78,8 @@ export class Projectile {
     }
 
     updateStandardHoming(dt, asteroids, players, hazards, projectiles, worldRules = null) {
-        if (!this.isBallistic || this.isGhost || this.isDecoy) return false;
+        const usesOwnerLockHoming = this.isBallistic || this.isOrb;
+        if (!usesOwnerLockHoming || this.isGhost || this.isDecoy) return false;
         const target = this.owner?.lockedAimTarget;
         const sameArea = candidate => !worldRules?.usesRooms || candidate.roomId === this.roomId;
         const valid = target && target !== this.owner && sameArea(target) && (
