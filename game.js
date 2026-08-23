@@ -2156,9 +2156,14 @@ export class Game {
         const room = Game.prototype.getExperimentalRoom.call(this, roomId) || this.experimentalRooms[0];
         if (!room) return { x: DESIGN_WIDTH / 2, y: DESIGN_HEIGHT / 2 };
         const region = room.spawnRegion;
-        const isOutsideExclusions = point => (room.spawnExclusionRegions || []).every(exclusion =>
-            point.x + radius < exclusion.left || point.x - radius > exclusion.right
-            || point.y + radius < exclusion.top || point.y - radius > exclusion.bottom);
+        const isOutsideExclusions = point => (room.spawnExclusionRegions || []).every(exclusion => {
+            if (exclusion.shape === 'CIRCLE') {
+                return Math.hypot(point.x - exclusion.centerX, point.y - exclusion.centerY)
+                    > exclusion.radius + radius;
+            }
+            return point.x + radius < exclusion.left || point.x - radius > exclusion.right
+                || point.y + radius < exclusion.top || point.y - radius > exclusion.bottom;
+        });
         const isValid = point => isOutsideExclusions(point) && room.walls.every(wall => !circleThickSegmentContact(
             { ...point, radius }, wall, room.wallCollisionThickness
         )) && occupants.every(player => player.isDead
@@ -5472,6 +5477,10 @@ export class Game {
         for (const { area: room, wall } of Game.prototype.getExperimentalRenderableWalls.call(
             this, camera, renderContext
         )) {
+            // Spawn-ring collision chords are represented by the continuous arc
+            // renderer below. Drawing their rounded endpoints here produces a
+            // dotted decoration while adding no gameplay information.
+            if (wall.id.includes('-spawn-ring-')) continue;
             const dx = wall.end.x - wall.start.x;
             const dy = wall.end.y - wall.start.y;
             ctx.save();

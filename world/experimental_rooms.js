@@ -417,7 +417,15 @@ export function createExperimentalAreas(roomWidth, roomHeight) {
     return [createExperimentalArea({
         ...shell,
         walls,
-        spawnExclusionRegions: [],
+        // The rings are reserved spawn space. Keeping this exclusion beside the
+        // authoritative ring descriptor prevents room populations from being
+        // initialized inside the outer circle without duplicating its geometry.
+        spawnExclusionRegions: [Object.freeze({
+            shape: 'CIRCLE',
+            centerX: spawnStructure.center.x,
+            centerY: spawnStructure.center.y,
+            radius: outerRing.radius
+        })],
         connectedAreaIds: [],
         entrances: [],
         wallCollisionThickness: EXPERIMENTAL_WALL_COLLISION_THICKNESS,
