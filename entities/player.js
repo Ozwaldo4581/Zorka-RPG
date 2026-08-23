@@ -2,7 +2,11 @@ import { updateNewtonian, checkCollision, nearestWrappedDisplacement, closestPoi
 import { Projectile } from './projectile.js';
 import { DESIGN_WIDTH, DESIGN_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT } from '../world_config.js';
 
-const BASE_GUN_COOLDOWN = 0.75;
+export const PREVIOUS_BALLISTIC_SHOT_INTERVAL = 0.75;
+export const BALLISTIC_SHOT_INTERVAL = PREVIOUS_BALLISTIC_SHOT_INTERVAL / 3;
+export const LASER_SHOT_INTERVAL = 0.75;
+export const ORB_SHOT_INTERVAL = PREVIOUS_BALLISTIC_SHOT_INTERVAL / 0.6;
+export const MISSILE_SHOT_INTERVAL = 0.75;
 const BASE_PROJECTILE_SPEED = 1200;
 const NORMAL_SHIP_SPEED_CAP = 800;
 export const HUMAN_MOVEMENT_COEFFICIENT = 1;
@@ -10,7 +14,8 @@ export const NPC_MOVEMENT_COEFFICIENT = 0.8;
 export const BASE_PROJECTILE_CAPACITY = 12;
 export const PROJECTILE_CAPACITY_UPGRADE = 2;
 export const CLIP_RELOAD_DURATION = 7;
-export const MISSILE_COOLDOWNS = Object.freeze({ 1: 13, 2: 9, 3: 5 });
+export const MISSILE_RELOAD_DURATION = 12;
+export const MAX_MISSILE_CAPACITY = 12;
 export const MISSILE_SPEED_MULTIPLIER = 1.8;
 const MARTIAN_PARALLEL_OFFSET = 30;
 export const SPECTER_FLEE_RANGE = 2700;
@@ -54,7 +59,7 @@ export class Player {
         this.brakeForce = 400;
         this.isDead = false;
         this.respawnTimer = 0;
-        this.fireCooldown = 0;
+        this.shotTimer = 0;
         this.isNPC = false;
         this.isExperimentalFleeingNPC = false;
         this.isExperimentalSpawnSpecter = false;
@@ -69,7 +74,7 @@ export class Player {
         // Power-up System
         this.powerUpCapsules = 0;
         this.maxPowerUpSlots = 5;
-        this.activeGun = 'Normal'; // Normal, Antigun, Double, Laser
+        this.activeGun = 'Normal'; // Ballistic forms: Normal/Base Gun, Antigun, Double
         this.weaponStreamCounts = { Laser: 0, Antigun: 0, Double: 0, Orb: 0 };
         this.slot1Type = Math.random() < 0.5 ? 'Antigun' : 'Double'; // Randomize slot 1 type on spawn
         this.ghosts = []; // List of Ghost entities
@@ -86,7 +91,9 @@ export class Player {
         this.hpRechargeTimer = 0;
         this.hasMissile = false;
         this.missileLevel = 0;
-        this.missileCooldown = 0;
+        this.missileAmmo = 0;
+        this.missileReloadTimer = 0;
+        this.missileShotTimer = 0;
         this.clipRounds = BASE_PROJECTILE_CAPACITY;
         this.clipReloadTimer = 0;
         this.martianParallelGuns = 1; // Base is 1 for Martian
@@ -325,7 +332,9 @@ export class Player {
         this.history = [];
         this.hasMissile = false;
         this.missileLevel = 0;
-        this.missileCooldown = 0;
+        this.missileAmmo = 0;
+        this.missileReloadTimer = 0;
+        this.missileShotTimer = 0;
         this.resetClip();
         this.martianParallelGuns = 1;
         this.resetEvolutionForm();
@@ -526,6 +535,35 @@ export class Player {
         return standardCapacity;
     }
 
+    getWeaponFamily() {
+        const baseProjectile = this.resolveBaseProjectile();
+        if (baseProjectile.isLaser) return 'Laser';
+        if (baseProjectile.isOrb) return 'Orb';
+        return 'Ballistic';
+    }
+
+    getPrimaryAmmoState() {
+        return {
+            family: this.getWeaponFamily(),
+            capacity: this.getClipCapacity(),
+            ammo: Math.max(0, Math.min(this.getClipCapacity(), this.clipRounds)),
+            reloadRemaining: Math.max(0, this.clipReloadTimer)
+        };
+    }
+
+    getMissileCapacity() {
+        return Math.min(MAX_MISSILE_CAPACITY, Math.max(0, Math.floor(this.missileLevel || 0)));
+    }
+
+    getMissileAmmoState() {
+        return {
+            family: 'Missile',
+            capacity: this.getMissileCapacity(),
+            ammo: Math.max(0, Math.min(this.getMissileCapacity(), this.missileAmmo)),
+            reloadRemaining: Math.max(0, this.missileReloadTimer)
+        };
+    }
+
     resetClip() {
         this.clipRounds = this.getClipCapacity();
         this.clipReloadTimer = 0;
@@ -533,10 +571,15 @@ export class Player {
 
     updateWeaponTimers(dt) {
         const elapsed = Math.max(0, Number(dt) || 0);
-        this.missileCooldown = Math.max(0, this.missileCooldown - elapsed);
-        if (this.clipReloadTimer <= 0) return;
-        this.clipReloadTimer = Math.max(0, this.clipReloadTimer - elapsed);
-        if (this.clipReloadTimer === 0) this.clipRounds = this.getClipCapacity();
+        this.missileShotTimer = Math.max(0, this.missileShotTimer - elapsed);
+        if (this.missileReloadTimer > 0) {
+            this.missileReloadTimer = Math.max(0, this.missileReloadTimer - elapsed);
+            if (this.missileReloadTimer === 0) this.missileAmmo = this.getMissileCapacity();
+        }
+        if (this.clipReloadTimer > 0) {
+            this.clipReloadTimer = Math.max(0, this.clipReloadTimer - elapsed);
+            if (this.clipReloadTimer === 0) this.clipRounds = this.getClipCapacity();
+        }
     }
 
     consumeClipRound() {
@@ -550,9 +593,11 @@ export class Player {
 
     fireMissile() {
         if (this.isDead || this.isNPC || this.isEventHorizon || this.isWeaponLocked()
-            || this.spawnImmunityTimer > 0 || this.missileLevel <= 0 || this.missileCooldown > 0) return null;
-        const tier = Math.min(3, Math.max(1, this.missileLevel));
-        this.missileCooldown = MISSILE_COOLDOWNS[tier];
+            || this.spawnImmunityTimer > 0 || this.getMissileCapacity() <= 0
+            || this.missileAmmo <= 0 || this.missileReloadTimer > 0 || this.missileShotTimer > 0) return null;
+        this.missileAmmo--;
+        this.missileShotTimer = MISSILE_SHOT_INTERVAL;
+        if (this.missileAmmo === 0) this.missileReloadTimer = MISSILE_RELOAD_DURATION;
         const missiles = [this.createMissile(this.x, this.y, this.rotation)];
         this.ghosts.forEach(ghost => missiles.push(this.createMissile(ghost.x, ghost.y, ghost.rotation)));
         return missiles;
@@ -810,7 +855,7 @@ export class Player {
             this.vy = (this.vy / currentSpeed) * maxSpeed;
         }
 
-        if (this.fireCooldown > 0) this.fireCooldown -= dt;
+        if (this.shotTimer > 0) this.shotTimer = Math.max(0, this.shotTimer - dt);
     }
 
     configureShields(maxShieldCharges, rechargeDelay) {
@@ -1494,7 +1539,7 @@ export class Player {
         if (normalizedSlot < 1 || normalizedSlot > this.maxPowerUpSlots) return false;
         if (normalizedSlot === 1
             && (this.weaponStreamCounts?.[this.slot1Type] || 0) >= MAX_STACKABLE_WEAPON_STREAMS) return false;
-        if (normalizedSlot === 2 && this.missileLevel >= 3) return false;
+        if (normalizedSlot === 2 && this.missileLevel >= MAX_MISSILE_CAPACITY) return false;
         if (normalizedSlot === 3) {
             if (this.isMartian) return this.martianParallelGuns < 2;
             if ((this.weaponStreamCounts?.Laser || 0) >= MAX_STACKABLE_WEAPON_STREAMS) return false;
@@ -1547,8 +1592,10 @@ export class Player {
                 break;
             case 2: // Missile
                 this.hasMissile = true;
-                this.missileLevel++;
-                this.missileCooldown = 0;
+                this.missileLevel = Math.min(MAX_MISSILE_CAPACITY, this.missileLevel + 1);
+                if (this.missileReloadTimer <= 0) {
+                    this.missileAmmo = Math.min(this.getMissileCapacity(), this.missileAmmo + 1);
+                }
                 break;
             case 3: // Laser (or Martian Parallel Guns)
                 if (this.isMartian) {
@@ -1654,7 +1701,9 @@ export class Player {
         this.weaponStreamCounts = { Laser: 0, Antigun: 0, Double: 0, Orb: 0 };
         this.hasMissile = false;
         this.missileLevel = 0;
-        this.missileCooldown = 0;
+        this.missileAmmo = 0;
+        this.missileReloadTimer = 0;
+        this.missileShotTimer = 0;
         this.martianParallelGuns = 1;
         this.resetEvolutionForm();
         this.ghosts = [];
@@ -1665,14 +1714,15 @@ export class Player {
         if (this.isEventHorizon) return null; // Event Horizon Horror does not shoot projectiles
         if (this.spawnImmunityTimer > 0 || this.isWeaponLocked()) return null; // Cannot shoot during immunity
 
-        if (this.fireCooldown <= 0 && this.consumeClipRound()) {
+        if (this.shotTimer <= 0 && this.consumeClipRound()) {
             // Main weapon logic
             const projectiles = [];
             
             const baseProjectile = this.resolveBaseProjectile();
-            const hasOrbWeapon = this.activeGun === 'Orb' && (this.weaponStreamCounts?.Orb || 0) > 0;
-            const usesStandardCadence = hasOrbWeapon || (!this.isCyborg && !this.isDimensionX);
-            this.fireCooldown = usesStandardCadence ? BASE_GUN_COOLDOWN : 0.35;
+            const family = this.getWeaponFamily();
+            this.shotTimer = family === 'Laser'
+                ? LASER_SHOT_INTERVAL
+                : family === 'Orb' ? ORB_SHOT_INTERVAL : BALLISTIC_SHOT_INTERVAL;
 
             // Main Gun Fire
             const mainProjs = this.getGunProjectiles(this.x, this.y, this.rotation, baseProjectile);
@@ -1720,7 +1770,8 @@ export class Player {
         const usesOrb = this.isCyborg || (this.activeGun === 'Orb' && (this.weaponStreamCounts?.Orb || 0) > 0);
         const usesLaser = !usesOrb && (this.isMartian || (!this.isDimensionX && this.activeGun === 'Laser'));
         const definition = usesLaser ? this.getLaserProjectileDefinition() : {
-            kind: 'projectile',
+            kind: usesOrb ? 'orb' : 'ballistic',
+            isBallistic: !usesOrb,
             isLaser: false,
             speed: BASE_PROJECTILE_SPEED,
             radius: 8,
@@ -1761,6 +1812,7 @@ export class Player {
             const p = new Projectile(sx, sy, vx, vy, this.color);
             p.owner = this;
             p.isLaser = baseProjectile.isLaser;
+            p.isBallistic = Boolean(baseProjectile.isBallistic);
             p.radius = baseProjectile.radius;
             p.lifeSpan = baseProjectile.lifeSpan;
             p.canWrap = baseProjectile.canWrap;

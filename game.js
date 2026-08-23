@@ -3497,17 +3497,17 @@ export class Game {
                     // Firing Logic
                     if (player.id === 1 && player.controlMode === 'KEYBOARD') {
                         // Mouse Autofire
-                        if (!this.victoryFadeActive && !this.victoryScreenActive && this.mouse.clicked && player.fireCooldown <= 0) {
+                        if (!this.victoryFadeActive && !this.victoryScreenActive && this.mouse.clicked && player.shotTimer <= 0) {
                             this.handleFire(player.id);
                         }
                     }
-                    if (player.id === 1 && player.shouldFire && player.fireCooldown <= 0
+                    if (player.id === 1 && player.shouldFire && player.shotTimer <= 0
                         && !this.victoryFadeActive && !this.victoryScreenActive) this.handleFire(player.id);
 
                     // Gamepad Firing logic
                     if (assignedGamepad) {
                         const rt = assignedGamepad.buttons[7]; // R2 / RT
-                        if (!this.victoryFadeActive && !this.victoryScreenActive && rt && rt.pressed && player.fireCooldown <= 0) {
+                        if (!this.victoryFadeActive && !this.victoryScreenActive && rt && rt.pressed && player.shotTimer <= 0) {
                             this.handleFire(player.id);
                         }
                     }
@@ -4388,7 +4388,9 @@ export class Game {
         player.ghosts = []; 
         player.hasMissile = false;
         player.missileLevel = 0;
-        player.missileCooldown = 0;
+        player.missileAmmo = 0;
+        player.missileReloadTimer = 0;
+        player.missileShotTimer = 0;
         player.resetClip();
         player.restoreShieldCharges(0);
         player.history = []; // Clear history so ghosts don't snap back to old positions on respawn

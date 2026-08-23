@@ -179,11 +179,11 @@ test('Martian Capsule 3 duplicates every completed gun-pattern emission in paral
     }
 });
 
-test('Martian base fire shares Earthling cadence and Capsule 3 does not add a timer', () => {
+test('Martian base fire uses Laser cadence and Capsule 3 does not add a timer', () => {
     const fireOnce = player => {
         player.spawnImmunityTimer = 0;
         const shots = player.fire();
-        return { shots, cooldown: player.fireCooldown };
+        return { shots, cooldown: player.shotTimer };
     };
     const earthling = fireOnce(new Player(0, 0));
     const martianPlayer = new Player(0, 0);
@@ -191,7 +191,8 @@ test('Martian base fire shares Earthling cadence and Capsule 3 does not add a ti
     martianPlayer.martianParallelGuns = 2;
     const martian = fireOnce(martianPlayer);
 
-    assert.equal(martian.cooldown, earthling.cooldown);
+    assert.equal(earthling.cooldown, 0.25);
+    assert.equal(martian.cooldown, 0.75);
     assert.equal(martian.shots.length, 2);
 });
 

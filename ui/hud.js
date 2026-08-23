@@ -350,6 +350,17 @@ export class HUD {
             const x = startX + col * (slotWidth + gap);
             const y = startY + row * (slotHeight + gap);
 
+            const primaryAmmo = player.getPrimaryAmmoState?.();
+            const missileAmmo = player.getMissileAmmoState?.();
+            const ammoState = i === 1 && missileAmmo?.capacity > 0
+                ? missileAmmo
+                : i === 0 && primaryAmmo?.family === 'Ballistic'
+                    ? primaryAmmo
+                    : i === 2 && primaryAmmo?.family === 'Laser'
+                        ? primaryAmmo
+                        : i === 3 && primaryAmmo?.family === 'Orb' ? primaryAmmo : null;
+            if (ammoState) this.drawAmmoMeter(ctx, ammoState, x + slotWidth / 2, y - 12, slotWidth - 14);
+
             const slotNumber = i + 1;
             const isCurrent = slotNumber === player.powerUpCapsules;
             const isSelectable = typeof player.canActivateCapsuleSlot !== 'function'
@@ -392,7 +403,38 @@ export class HUD {
             ctx.font = '14px Orbitron';
             ctx.fillStyle = '#fff';
             ctx.textAlign = 'center';
-            ctx.fillText(msg, centerX, startY - 15);
+            ctx.fillText(msg, centerX, startY - 28);
+        }
+    }
+
+    // Geometry only: ammunition truth and timers remain Player-owned.
+    drawAmmoMeter(ctx, ammoState, centerX, bottomY, totalWidth) {
+        const capacity = Math.max(0, Math.floor(ammoState.capacity || 0));
+        if (capacity === 0) return;
+        if (ammoState.reloadRemaining > 0) {
+            ctx.font = 'bold 11px Orbitron';
+            ctx.fillStyle = '#a8a8a8';
+            ctx.textAlign = 'center';
+            ctx.fillText(Math.max(0, ammoState.reloadRemaining).toFixed(2), centerX, bottomY);
+            return;
+        }
+
+        const ammo = Math.max(0, Math.min(capacity, Math.floor(ammoState.ammo || 0)));
+        const normalGap = 2;
+        const gap = Math.min(normalGap, Math.max(0, (totalWidth - capacity) / Math.max(1, capacity - 1)));
+        const cubeWidth = Math.max(0, (totalWidth - gap * (capacity - 1)) / capacity);
+        const height = 7;
+        const startX = centerX - totalWidth / 2;
+        for (let index = 0; index < capacity; index++) {
+            const x = startX + index * (cubeWidth + gap);
+            const width = index === capacity - 1 ? startX + totalWidth - x : cubeWidth;
+            ctx.fillStyle = index < ammo ? '#9a9a9a' : 'rgba(154, 154, 154, 0.16)';
+            ctx.fillRect(x, bottomY - height, width, height);
+            if (index >= ammo && width >= 1) {
+                ctx.strokeStyle = 'rgba(154, 154, 154, 0.55)';
+                ctx.lineWidth = Math.min(1, width);
+                ctx.strokeRect(x, bottomY - height, width, height);
+            }
         }
     }
 
@@ -408,9 +450,10 @@ export class HUD {
         const rows = Math.ceil(slotCount / maxCols);
         const gridHeight = rows * slotHeight + (rows - 1) * gap;
 
-        const speed = player.speed || 0;
-        const speedPercent = Math.min(speed / this.maxSpeed, 1);
-        const bandCount = 5;
+        const speed = Number.isFinite(player.speed) ? player.speed : Math.hypot(player.vx || 0, player.vy || 0);
+        const maximumSpeed = player.getNormalShipSpeedCap?.() || this.maxSpeed;
+        const speedPercent = Math.min(speed / maximumSpeed, 1);
+        const bandCount = 5 + Math.max(0, Math.floor(player.speedUpgradeCount || 0));
         const activeBands = Math.ceil(speedPercent * bandCount);
 
         const height = 22;

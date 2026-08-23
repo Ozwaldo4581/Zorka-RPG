@@ -1,38 +1,67 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { MISSILE_SPEED_MULTIPLIER, Player } from '../entities/player.js';
+import {
+    LASER_SHOT_INTERVAL,
+    MAX_MISSILE_CAPACITY,
+    MISSILE_RELOAD_DURATION,
+    MISSILE_SHOT_INTERVAL,
+    MISSILE_SPEED_MULTIPLIER,
+    Player
+} from '../entities/player.js';
 
 function selectMissile(player) {
     player.powerUpCapsules = 2;
     return player.activatePowerUp();
 }
 
-test('Missile capsules cap at level three and reset their per-player cooldown', () => {
+test('Missile capsules add one Player-owned round through the capacity cap', () => {
     const player = new Player(0, 0);
     player.spawnImmunityTimer = 0;
-    for (let level = 1; level <= 3; level++) {
+    for (let capacity = 1; capacity <= MAX_MISSILE_CAPACITY; capacity++) {
         assert.equal(selectMissile(player), true);
-        assert.equal(player.missileLevel, level);
+        assert.equal(player.getMissileCapacity(), capacity);
+        assert.equal(player.missileAmmo, capacity);
     }
     player.powerUpCapsules = 2;
     assert.equal(player.activatePowerUp(), false);
-    player.missileCooldown = 2;
+    assert.equal(player.getMissileCapacity(), 12);
     player.resetTransientLifeState();
-    assert.deepEqual([player.hasMissile, player.missileLevel, player.missileCooldown], [false, 0, 0]);
+    assert.deepEqual(
+        [player.hasMissile, player.missileLevel, player.missileAmmo, player.missileReloadTimer, player.missileShotTimer],
+        [false, 0, 0, 0, 0]
+    );
 });
 
-test('Missile tiers fire manually with 13, 9, and 5 second cooldowns', () => {
-    for (const [level, cooldown] of [[1, 13], [2, 9], [3, 5]]) {
-        const player = new Player(0, 0);
-        player.spawnImmunityTimer = 0;
-        for (let i = 0; i < level; i++) assert.equal(selectMissile(player), true);
+test('Missile clip consumes rounds at an independent Laser-equal interval and reloads empty in twelve seconds', () => {
+    const player = new Player(0, 0);
+    player.spawnImmunityTimer = 0;
+    for (let i = 0; i < 4; i++) assert.equal(selectMissile(player), true);
+    assert.equal(MISSILE_SHOT_INTERVAL, LASER_SHOT_INTERVAL);
+    for (let ammo = 3; ammo >= 0; ammo--) {
         assert.equal(player.fireMissile().filter(shot => shot.isMissile).length, 1);
-        assert.equal(player.missileCooldown, cooldown);
-        assert.equal(player.fireMissile(), null);
-        player.updateWeaponTimers(cooldown);
-        assert.equal(player.fireMissile().length, 1);
+        assert.equal(player.missileAmmo, ammo);
+        if (ammo > 0) player.updateWeaponTimers(MISSILE_SHOT_INTERVAL);
     }
+    assert.equal(player.missileReloadTimer, MISSILE_RELOAD_DURATION);
+    assert.equal(player.fireMissile(), null);
+    player.updateWeaponTimers(MISSILE_RELOAD_DURATION - 0.01);
+    assert.equal(player.missileAmmo, 0);
+    player.updateWeaponTimers(0.01);
+    assert.equal(player.missileAmmo, 4);
+});
+
+test('capacity upgrades during Missile reload preserve the timer and refill the new capacity', () => {
+    const player = new Player(0, 0);
+    player.spawnImmunityTimer = 0;
+    selectMissile(player);
+    player.fireMissile();
+    player.updateWeaponTimers(2);
+    assert.equal(selectMissile(player), true);
+    assert.equal(player.missileReloadTimer, 10);
+    assert.equal(player.missileAmmo, 0);
+    player.updateWeaponTimers(10);
+    assert.equal(player.missileAmmo, 2);
 });
 
 test('Missile launch and homing retain the tuned normal ship speed-cap multiplier', () => {

@@ -6,9 +6,9 @@
 
 ## Gameplay flow
 
-Input → `Player.update()` applies aim-relative Newtonian movement at human `1.0` or NPC `0.8` coefficient. Held primary intent → `Game.handleFire()` → `Player.fire()` consumes Player-owned clip ammunition at the existing cadence. Empty clips reload after 7 seconds. **E** → `Game.handleMissileFire()` → `Player.fireMissile()` checks unlock and Player-owned 13/9/5 cooldown.
+Input → `Player.update()` applies aim-relative Newtonian movement at human `1.0` or NPC `0.8` coefficient. Held primary intent → `Game.handleFire()` → `Player.fire()` consumes Player-owned clip ammunition at the family shot interval (Ballistic `0.25s`, Laser `0.75s`, Orb `1.25s`). Empty primary clips reload after 7 seconds. **E** → `Game.handleMissileFire()` → `Player.fireMissile()` checks unlock, Player-owned ammunition, independent `0.75s` shot eligibility, and the fixed 12-second empty-clip reload.
 
-`Player.fire()` → `Projectile` → canonical `Game.projectiles` → projectile update and Sector 1 wall resolution → `Game.checkCollisions()` → authoritative damage/reward/death. Ordinary projectiles read only `owner.lockedAimTarget` and steer at `MISSILE_HOMING_TURN_RATE × 0.3` when it remains valid.
+`Player.fire()` → generic `Projectile` → canonical `Game.projectiles` → projectile update and Sector 1 wall resolution → `Game.checkCollisions()` → authoritative damage/reward/death. Explicit Ballistic projectiles (Base Gun, Double, Antigun) read only `owner.lockedAimTarget` and steer at `MISSILE_HOMING_TURN_RATE × 0.3` when it remains valid; Laser, Orb, and Missile remain separate families. HUD ammo/reload and expanding Speed cubes are derived every frame from Player-owned state.
 
 ## Adventure world
 

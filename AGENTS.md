@@ -68,8 +68,10 @@ Keep these familiar asset locations stable unless asset migration is explicitly 
 
 - Movement is aim-relative. Human movement coefficient is 1.0 and NPC movement coefficient is 0.8.
 - Player owns its clip: Standard begins at 12, Projectile upgrades add 2, Laser derives at 50%, Orb derives at 33.333% using nearest-whole normalization, and empty reload takes 7 seconds.
-- Player owns manual missile cooldown. Keyboard/mouse Player 1 fires with E; tiers use 13/9/5 seconds. No automatic missile firing or new controller binding.
-- Ordinary projectiles use only their owner's valid live lock at 0.3 missile homing strength.
+- Ballistic is the Base Gun, Double, and Antigun family; Laser, Orb, and Missile are separate families while `Projectile` remains the generic runtime entity.
+- Fire rate is emission frequency, shot interval is seconds between events, and reload is the empty-clip refill duration. Ballistic uses one-third of the former 0.75-second interval, Laser remains 0.75 seconds, Orb uses 1.25 seconds, and Missile independently uses 0.75 seconds.
+- Player owns the manual Missile clip. Each Missile capsule adds one round up to 12, an empty clip reloads in a fixed 12 seconds, and keyboard/mouse Player 1 fires with E. No automatic missile firing or new controller binding.
+- Ballistic projectiles use only their owner's valid live lock at 0.3 missile homing strength.
 - Held primary fire discharges the clip at the established cadence without burst grouping.
 - Adventure is playable, while shared runtime behavior remains in the shared owners rather than menu/rendering code.
 
@@ -162,7 +164,7 @@ UI may dispatch intent and read state; it must not grant rewards, resolve damage
 - HP recharges to full after its configured delay; shields recharge one charge at a time according to Arena Options.
 - Shield level upgrades add one maximum charge and grant one current charge.
 - Respawn restores HP, movement state, brief immunity, and configured starting shield charges without erasing match-local shield capacity.
-- Ordinary Normal, Antigun, and Double projectiles receive independent world-width travel caps. Lasers, missiles, and transformation-specific projectiles remain uncapped by that system.
+- Ballistic Base Gun, Antigun, and Double projectiles receive independent world-width travel caps. Lasers, missiles, and transformation-specific projectiles remain uncapped by that system.
 - Asteroids remain lethal cover and split Large → Medium → Small.
 - Debris and satellites grant configured XP but no capsules.
 - Enemy ship kills grant a capsule and score/streak progression; NPC kills also grant XP based on NPC level.
