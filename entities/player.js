@@ -6,6 +6,12 @@ const BASE_GUN_COOLDOWN = 0.75;
 const BURST_INTERVAL = 0.05;
 const BASE_PROJECTILE_SPEED = 1200;
 const NORMAL_SHIP_SPEED_CAP = 800;
+export const HUMAN_MOVEMENT_COEFFICIENT = 1;
+export const NPC_MOVEMENT_COEFFICIENT = 0.8;
+export const BASE_PROJECTILE_CAPACITY = 12;
+export const PROJECTILE_CAPACITY_UPGRADE = 2;
+export const CLIP_RELOAD_DURATION = 7;
+export const MISSILE_COOLDOWNS = Object.freeze({ 1: 13, 2: 9, 3: 5 });
 export const MISSILE_SPEED_MULTIPLIER = 1.8;
 const MARTIAN_PARALLEL_OFFSET = 30;
 export const SPECTER_FLEE_RANGE = 2700;
@@ -81,7 +87,9 @@ export class Player {
         this.hpRechargeTimer = 0;
         this.hasMissile = false;
         this.missileLevel = 0;
-        this.missileShotCounter = 0;
+        this.missileCooldown = 0;
+        this.clipRounds = BASE_PROJECTILE_CAPACITY;
+        this.clipReloadTimer = 0;
         this.martianParallelGuns = 1; // Base is 1 for Martian
         this.bonusSpeed = 0; // For Event Horizon Horror
         
@@ -245,7 +253,8 @@ export class Player {
     }
 
     getEffectiveThrust() {
-        return this.thrust * this.getSpeedMultiplier();
+        const movementCoefficient = this.isNPC ? NPC_MOVEMENT_COEFFICIENT : HUMAN_MOVEMENT_COEFFICIENT;
+        return this.thrust * this.getSpeedMultiplier() * movementCoefficient;
     }
 
     getNormalShipSpeedCap() {
@@ -323,7 +332,8 @@ export class Player {
         this.history = [];
         this.hasMissile = false;
         this.missileLevel = 0;
-        this.missileShotCounter = 0;
+        this.missileCooldown = 0;
+        this.resetClip();
         this.martianParallelGuns = 1;
         this.resetEvolutionForm();
         this.bonusSpeed = 0;
@@ -515,7 +525,57 @@ export class Player {
 
     getDirectionalThrust(inputX, inputY) {
         const effectiveThrust = this.getEffectiveThrust();
-        return { x: inputX * effectiveThrust, y: inputY * effectiveThrust };
+        const cos = Math.cos(this.rotation);
+        const sin = Math.sin(this.rotation);
+        return {
+            x: (inputX * cos - inputY * sin) * effectiveThrust,
+            y: (inputX * sin + inputY * cos) * effectiveThrust
+        };
+    }
+
+    getStandardProjectileCapacity() {
+        return BASE_PROJECTILE_CAPACITY + this.projectileUpgradeCount * PROJECTILE_CAPACITY_UPGRADE;
+    }
+
+    getClipCapacity() {
+        const standardCapacity = this.getStandardProjectileCapacity();
+        const baseProjectile = this.resolveBaseProjectile();
+        if (baseProjectile.isLaser) return Math.round(standardCapacity * 0.5);
+        if (baseProjectile.isOrb) return Math.round(standardCapacity * 0.33333);
+        return standardCapacity;
+    }
+
+    resetClip() {
+        this.clipRounds = this.getClipCapacity();
+        this.clipReloadTimer = 0;
+    }
+
+    updateWeaponTimers(dt) {
+        const elapsed = Math.max(0, Number(dt) || 0);
+        this.missileCooldown = Math.max(0, this.missileCooldown - elapsed);
+        if (this.clipReloadTimer <= 0) return;
+        this.clipReloadTimer = Math.max(0, this.clipReloadTimer - elapsed);
+        if (this.clipReloadTimer === 0) this.clipRounds = this.getClipCapacity();
+    }
+
+    consumeClipRound() {
+        if (this.clipReloadTimer > 0 || this.clipRounds <= 0) return false;
+        this.clipRounds--;
+        if (this.clipRounds === 0) {
+            this.clipReloadTimer = CLIP_RELOAD_DURATION;
+            this.cancelBurstFire();
+        }
+        return true;
+    }
+
+    fireMissile() {
+        if (this.isDead || this.isNPC || this.isEventHorizon || this.isWeaponLocked()
+            || this.spawnImmunityTimer > 0 || this.missileLevel <= 0 || this.missileCooldown > 0) return null;
+        const tier = Math.min(3, Math.max(1, this.missileLevel));
+        this.missileCooldown = MISSILE_COOLDOWNS[tier];
+        const missiles = [this.createMissile(this.x, this.y, this.rotation)];
+        this.ghosts.forEach(ghost => missiles.push(this.createMissile(ghost.x, ghost.y, ghost.rotation)));
+        return missiles;
     }
 
     setEvolutionForm(form) {
@@ -580,6 +640,7 @@ export class Player {
 
         this.updateShieldRecharge(dt);
         this.updateHPRecharge(dt);
+        this.updateWeaponTimers(dt);
 
         const translationLocked = this.isTranslationLocked();
         const respawnAnchorX = this.experimentalRespawnAnchorX;
@@ -1486,6 +1547,7 @@ export class Player {
         this.activeGun = weapon;
         this.weaponStreamCounts[weapon] = switched ? 1 : currentRank + 1;
         this.cancelBurstFire();
+        this.resetClip();
         return {
             applied: true,
             reason: switched ? 'switched' : 'rank-increased',
@@ -1515,7 +1577,7 @@ export class Player {
             case 2: // Missile
                 this.hasMissile = true;
                 this.missileLevel++;
-                this.missileShotCounter = 0;
+                this.missileCooldown = 0;
                 break;
             case 3: // Laser (or Martian Parallel Guns)
                 if (this.isMartian) {
@@ -1622,7 +1684,7 @@ export class Player {
         this.cancelBurstFire();
         this.hasMissile = false;
         this.missileLevel = 0;
-        this.missileShotCounter = 0;
+        this.missileCooldown = 0;
         this.martianParallelGuns = 1;
         this.resetEvolutionForm();
         this.ghosts = [];
@@ -1633,7 +1695,7 @@ export class Player {
         if (this.isEventHorizon) return null; // Event Horizon Horror does not shoot projectiles
         if (this.spawnImmunityTimer > 0 || this.isWeaponLocked()) return null; // Cannot shoot during immunity
 
-        if (this.fireCooldown <= 0 || isBurstShot) {
+        if ((this.fireCooldown <= 0 || isBurstShot) && this.consumeClipRound()) {
             // Main weapon logic
             const projectiles = [];
             
@@ -1660,20 +1722,6 @@ export class Player {
                 ghostProjs.forEach(p => p.isGhost = true);
                 projectiles.push(...ghostProjs);
             });
-
-            // Missile cadence counts successful primary firing cycles, never burst follow-ups.
-            if (!isBurstShot && this.missileLevel > 0) {
-                this.missileShotCounter++;
-                const shotsPerMissile = 4 - this.missileLevel;
-                if (this.missileShotCounter >= shotsPerMissile) {
-                    this.missileShotCounter = 0;
-                    projectiles.push(this.createMissile(this.x, this.y, this.rotation));
-
-                    this.ghosts.forEach(ghost => {
-                        projectiles.push(this.createMissile(ghost.x, ghost.y, ghost.rotation));
-                    });
-                }
-            }
 
             return projectiles;
         }
@@ -1704,7 +1752,9 @@ export class Player {
     }
 
     resolveBaseProjectile() {
-        const quantity = 3 + Math.min(this.maxProjectileUpgrades, Math.max(0, this.projectileUpgradeCount));
+        // Projectile progression is clip capacity; it no longer changes the
+        // established three-round primary firing cadence.
+        const quantity = 3;
         const usesOrb = this.isCyborg || (this.activeGun === 'Orb' && (this.weaponStreamCounts?.Orb || 0) > 0);
         const usesLaser = !usesOrb && (this.isMartian || (!this.isDimensionX && this.activeGun === 'Laser'));
         const definition = usesLaser ? this.getLaserProjectileDefinition() : {
