@@ -453,6 +453,7 @@ export function createExperimentalAreas(roomWidth, roomHeight) {
     const b = shell.bounds;
     const initialSpawn = point((b.left + b.right) / 2, (b.top + b.bottom) / 2);
     const spawnStructure = createSpawnStructure(initialSpawn);
+    const outerRing = spawnStructure.rings.find(ring => ring.id === 'outer');
     const walls = [
         ...buildWalls(shell, []),
         ...buildSpawnStructureWalls(shell.id, spawnStructure)
@@ -460,7 +461,15 @@ export function createExperimentalAreas(roomWidth, roomHeight) {
     return [createExperimentalArea({
         ...shell,
         walls,
-        spawnExclusionRegions: [],
+        // The rings are reserved spawn space. Keeping this exclusion beside the
+        // authoritative ring descriptor prevents room populations from being
+        // initialized inside the outer circle without duplicating its geometry.
+        spawnExclusionRegions: [Object.freeze({
+            shape: 'CIRCLE',
+            centerX: spawnStructure.center.x,
+            centerY: spawnStructure.center.y,
+            radius: outerRing.radius
+        })],
         connectedAreaIds: [],
         entrances: [],
         wallCollisionThickness: EXPERIMENTAL_WALL_COLLISION_THICKNESS,
