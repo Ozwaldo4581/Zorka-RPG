@@ -4,6 +4,10 @@ export const EXPERIMENTAL_WALL_SEPARATION_EPSILON = 0.5;
 export const EXPERIMENTAL_WALL_MAX_CORRECTION_PASSES = 4;
 
 const SPAWN_INSET = 120;
+const SPAWN_STRUCTURE_INNER_RADIUS = 650;
+const SPAWN_STRUCTURE_OUTER_RADIUS = 1000;
+const SPAWN_STRUCTURE_INNER_GAP = Math.PI * 0.42;
+const SPAWN_STRUCTURE_OUTER_GAP = Math.PI * 0.38;
 // A normal ship renders at 3.5 times its 25-unit collision radius. Sector 9's
 // cover clearance is five of those normal physical footprints.
 export const EXPERIMENTAL_NORMAL_SHIP_LENGTH = 25 * 3.5;
@@ -134,6 +138,26 @@ const boundsAt = (left, top, width, height) => Object.freeze({ left, top, right:
 const wall = (id, x1, y1, x2, y2, isTwoSided = false) => Object.freeze({
     id, start: point(x1, y1), end: point(x2, y2), ...(isTwoSided ? { isTwoSided: true } : {})
 });
+
+function createSpawnStructure(center) {
+    const ring = (id, radius, gapCenter, gapSize) => Object.freeze({
+        id,
+        center,
+        radius,
+        gapCenter,
+        gapSize,
+        startAngle: gapCenter + gapSize / 2,
+        endAngle: gapCenter - gapSize / 2 + Math.PI * 2
+    });
+    return Object.freeze({
+        id: 'adventure-spawn-rings',
+        center,
+        rings: Object.freeze([
+            ring('inner', SPAWN_STRUCTURE_INNER_RADIUS, Math.PI / 2, SPAWN_STRUCTURE_INNER_GAP),
+            ring('outer', SPAWN_STRUCTURE_OUTER_RADIUS, 0, SPAWN_STRUCTURE_OUTER_GAP)
+        ])
+    });
+}
 
 const interiorWall = (id, x1, y1, x2, y2) => wall(id, x1, y1, x2, y2, true);
 
@@ -400,6 +424,7 @@ export function createExperimentalAreas(roomWidth, roomHeight) {
     };
     const walls = buildWalls(shell, []);
     const b = shell.bounds;
+    const initialSpawn = point((b.left + b.right) / 2, (b.top + b.bottom) / 2);
     return [createExperimentalArea({
         ...shell,
         walls,
@@ -410,6 +435,8 @@ export function createExperimentalAreas(roomWidth, roomHeight) {
         wallVisualCoreThickness: EXPERIMENTAL_WALL_VISUAL_CORE_THICKNESS,
         collisionEpsilon: EXPERIMENTAL_WALL_SEPARATION_EPSILON,
         maxCorrectionPasses: EXPERIMENTAL_WALL_MAX_CORRECTION_PASSES,
+        initialSpawn,
+        spawnStructure: createSpawnStructure(initialSpawn),
         spawnRegion: Object.freeze({
             left: b.left + SPAWN_INSET,
             top: b.top + SPAWN_INSET,
