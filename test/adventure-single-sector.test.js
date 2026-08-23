@@ -35,6 +35,25 @@ test('Adventure spawn structure is immutable geometry derived from the initial s
   assert.equal(structure.rings[1].gapCenter - structure.rings[0].gapCenter, Math.PI);
   assert.equal(structure.rings[1].gapSize, structure.rings[0].gapSize * 0.5);
   assert.deepEqual(structure.rings.map(ring => ring.radius), [650, 1000]);
+  assert.deepEqual(room.spawnExclusionRegions, [{
+    shape: 'CIRCLE', centerX: structure.center.x, centerY: structure.center.y, radius: 1000
+  }]);
+});
+
+test('Adventure population spawning excludes the complete outer-ring circle', () => {
+  const [room] = createExperimentalAreas(EXPERIMENTAL_ROOM_WIDTH, EXPERIMENTAL_ROOM_HEIGHT);
+  const game = { experimentalRooms: [room], getExperimentalRoom: () => room };
+  const originalRandom = Math.random;
+  Math.random = () => 0.5;
+  try {
+    for (const radius of [20, 25, 32, 36, 80]) {
+      const spawn = Game.prototype.findExperimentalSpawn.call(game, radius, [], room.id);
+      assert.ok(Math.hypot(spawn.x - room.initialSpawn.x, spawn.y - room.initialSpawn.y)
+        > room.spawnStructure.rings[1].radius + radius);
+    }
+  } finally {
+    Math.random = originalRandom;
+  }
 });
 
 test('Adventure spawn arcs derive connected two-sided walls with empty openings', () => {
@@ -127,6 +146,27 @@ test('Adventure world and minimap render the same spawn-ring descriptor', () => 
     room.spawnStructure.rings[1].radius / room.spawnStructure.rings[0].radius);
   assert.deepEqual(minimapArcs.map(([, , , start, end]) => ({ start, end })),
     room.spawnStructure.rings.map(({ startAngle: start, endAngle: end }) => ({ start, end })));
+});
+
+test('normal wall rendering omits spawn-ring chord endpoints but keeps other walls', () => {
+  const [room] = createExperimentalAreas(EXPERIMENTAL_ROOM_WIDTH, EXPERIMENTAL_ROOM_HEIGHT);
+  let strokes = 0;
+  const context = {
+    save() {}, restore() {}, beginPath() {}, moveTo() {}, lineTo() {},
+    stroke() { strokes++; }
+  };
+  const game = {
+    experimentalRooms: [room],
+    experimentalDoors: []
+  };
+  Game.prototype.drawExperimentalWalls.call(game, context, { apply() {} }, {
+    currentArea: room,
+    wallViewport: room.bounds
+  });
+  assert.equal(strokes, perimeterWalls(room).length * 2,
+    'only the glow and core strokes for non-ring walls remain');
+  assert.ok(ringWalls(room, 'inner').length + ringWalls(room, 'outer').length > 0,
+    'collision chord density remains intact');
 });
 
 test('spawn-ring renderer is inert without Adventure geometry', () => {
