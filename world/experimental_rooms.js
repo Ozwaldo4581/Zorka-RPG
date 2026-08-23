@@ -15,6 +15,10 @@ export const EXPERIMENTAL_HALLWAY_LENGTH = 4000;
 // A 960-unit entrance plus 240 units of wall shoulder on either side gives
 // transformed human ships ample room to turn and slide without widening doors.
 export const EXPERIMENTAL_HALLWAY_WIDTH = 1440;
+// Sector 1's dead-end nook is intentionally half the width of a major
+// connector. Its depth derives from this single tuning dimension.
+export const EXPERIMENTAL_SECTOR_1_NOOK_WIDTH = EXPERIMENTAL_HALLWAY_WIDTH / 2;
+export const EXPERIMENTAL_SECTOR_1_NOOK_DEPTH = EXPERIMENTAL_SECTOR_1_NOOK_WIDTH * 2;
 const DOOR_TRANSITION_TOLERANCE = 16;
 export const EXPERIMENTAL_WALL_INDEX_CELL_SIZE = 512;
 const FULL_ARENA_POPULATION = Object.freeze({
@@ -398,8 +402,17 @@ export function createExperimentalAreas(roomWidth, roomHeight) {
         population: FULL_ARENA_POPULATION,
         npcAggressionSource: 'ARENA_OPTIONS'
     };
-    const walls = buildWalls(shell, []);
     const b = shell.bounds;
+    const nookCenterY = (b.top + b.bottom) / 2;
+    const nookTop = nookCenterY - EXPERIMENTAL_SECTOR_1_NOOK_WIDTH / 2;
+    const nookBottom = nookCenterY + EXPERIMENTAL_SECTOR_1_NOOK_WIDTH / 2;
+    const nookMouthX = b.left + EXPERIMENTAL_SECTOR_1_NOOK_DEPTH;
+    const nookWalls = [
+        interiorWall(`${shell.id}-interior-left-nook-top`, b.left, nookTop, nookMouthX, nookTop),
+        interiorWall(`${shell.id}-interior-left-nook-bottom`, nookMouthX, nookBottom, b.left, nookBottom),
+        interiorWall(`${shell.id}-interior-left-nook-dead-end`, b.left, nookBottom, b.left, nookTop)
+    ];
+    const walls = buildWalls(shell, [], nookWalls);
     return [createExperimentalArea({
         ...shell,
         walls,
