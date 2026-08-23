@@ -16,6 +16,7 @@ import {
     isLineBlockedByWalls
 } from './physics.js';
 import { CircleSpatialHash, forEachNearbyCirclePair } from './world/spatial_hash.js';
+import { ARCADE_BOUNDED_WORLD } from './world/bounded_arena.js';
 import { DESIGN_WIDTH, DESIGN_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT } from './world_config.js';
 
 export { DESIGN_WIDTH, DESIGN_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT } from './world_config.js';
@@ -553,7 +554,7 @@ export class Game {
             return;
         }
 
-        this.startGame(this.gameState, this.players.length || 1);
+        this.returnToMenu();
     }
 
     startArcadeMode() {
@@ -885,36 +886,6 @@ export class Game {
             this.lastActiveMenuId = 'main-menu';
         });
 
-        document.getElementById('btn-solo-open').addEventListener('click', () => {
-            this.pendingMode = 'SOLO';
-            document.getElementById('main-menu').classList.add('hidden');
-            document.getElementById('solo-menu').classList.remove('hidden');
-            document.getElementById('controls-selection').classList.remove('hidden');
-            document.getElementById('p2-control-line').classList.add('hidden');
-            document.getElementById('transformation-setting').classList.add('hidden');
-            
-            // Show all bot buttons for Solo
-            document.querySelectorAll('.bot-count-btn').forEach(btn => btn.classList.remove('hidden'));
-            
-            this.updateGamepadStatus();
-            
-            // Default Solo Arena to 4 enemy bots.
-            this.selectedBotCount = 4;
-
-            document.querySelectorAll('.bot-count-btn').forEach(btn => {
-                btn.classList.remove('selected');
-            });
-
-            const defaultBotButton = document.querySelector(
-                '.bot-count-btn[data-bot-count="4"]'
-            );
-
-            if (defaultBotButton) {
-            defaultBotButton.classList.add('selected');
-            }
-
-            this.updateSoloMockLobby(this.selectedBotCount);
-        });
 
         document.getElementById('btn-pvp').addEventListener('click', () => {
             this.pendingMode = 'PVP';
@@ -1178,10 +1149,7 @@ export class Game {
             }
         });
 
-        document.getElementById('btn-botless-continue').addEventListener('click', () => {
-            document.getElementById('botless-popup').classList.add('hidden');
-            this.startGame('SOLO', 1);
-        });
+
 
         document.getElementById('btn-botless-back').addEventListener('click', () => {
             document.getElementById('botless-popup').classList.add('hidden');
@@ -1590,6 +1558,7 @@ export class Game {
     }
 
     startGame(mode, customShipCount) {
+        if (mode === GAME_MODE.SOLO) return false;
         if (mode !== GAME_MODE.EXPERIMENTAL) {
             this.experimentalNewGamePlusCycle = 0;
             this.clearExperimentalState();
@@ -1603,6 +1572,7 @@ export class Game {
         this.spawnInitialAsteroids();
 
         Game.prototype.beginGameplayMusic.call(this);
+        return true;
     }
 
     beginGameplayMusic() {
@@ -2023,6 +1993,17 @@ export class Game {
     }
 
     getWorldRules() {
+        if (this.gameState === GAME_MODE.ARCADE) {
+            return {
+                wrap: false,
+                bounded: true,
+                usesRooms: false,
+                camera: 'BOUNDED',
+                spawn: 'GLOBAL',
+                room: ARCADE_BOUNDED_WORLD,
+                getWallsFor: () => ARCADE_BOUNDED_WORLD.walls
+            };
+        }
         if (this.gameState === GAME_MODE.EXPERIMENTAL) {
             const room = this.experimentalRooms[0] || null;
             return {
@@ -2036,6 +2017,10 @@ export class Game {
             };
         }
         return { wrap: true, usesRooms: false, camera: 'WRAP', spawn: 'GLOBAL', room: null };
+    }
+
+    isWrappedWorld() {
+        return this.gameState !== GAME_MODE.ARCADE && this.gameState !== GAME_MODE.EXPERIMENTAL;
     }
 
     getExperimentalRoom(roomId) {
@@ -2912,14 +2897,14 @@ export class Game {
         this.clearExperimentalState();
     }
 
-    handleFire(playerId, isBurstShot = false) {
+    handleFire(playerId) {
         const player = this.players.find(p => p.id === playerId);
         if (!player || player.isDead || player.isWeaponLocked()
             || this.victoryFadeActive || this.victoryScreenActive) return;
         if (this.gameState === GAME_MODE.EXPERIMENTAL && player.isNPC
             && !Game.prototype.hasHumanInExperimentalArea.call(this, player.roomId)) return;
         
-        const projs = player.fire(isBurstShot);
+        const projs = player.fire();
         if (projs && projs.length > 0) {
             if (this.gameState === GAME_MODE.EXPERIMENTAL) {
                 projs.forEach(projectile => { projectile.roomId = player.roomId; });
@@ -2928,9 +2913,7 @@ export class Game {
             
             // Spatial audio
             const cameras = this.getActiveCameras();
-            if (!isBurstShot) {
-                Game.prototype.playSpatialEvent.call(this, 'laser_fire', player.x, player.y, player.roomId, cameras);
-            }
+            Game.prototype.playSpatialEvent.call(this, 'laser_fire', player.x, player.y, player.roomId, cameras);
             
         }
     }
@@ -2967,7 +2950,7 @@ export class Game {
     playSpatialEvent(name, x, y, roomId = null, cameras = this.getActiveCameras()) {
         if (this.gameState === GAME_MODE.EXPERIMENTAL
             && !Game.prototype.hasHumanInExperimentalArea.call(this, roomId)) return false;
-        if (this.gameState === GAME_MODE.EXPERIMENTAL || typeof this.audio.playSpatial !== 'function') {
+        if (!Game.prototype.isWrappedWorld.call(this) || typeof this.audio.playSpatial !== 'function') {
             this.audio.playSpatialUnwrapped?.(name, x, y, cameras);
         } else {
             this.audio.playSpatial(name, x, y, cameras, WORLD_WIDTH, WORLD_HEIGHT);
@@ -3046,7 +3029,7 @@ export class Game {
             if (filter && !filter(entity)) return;
             if (!Number.isFinite(entity.x) || !Number.isFinite(entity.y) || !Number.isFinite(entity.radius)) return;
 
-            const delta = this.gameState === GAME_MODE.EXPERIMENTAL
+            const delta = !Game.prototype.isWrappedWorld.call(this)
                 ? { x: entity.x - worldX, y: entity.y - worldY }
                 : nearestWrappedDisplacement(worldX, worldY, entity.x, entity.y);
             const distanceSquared = delta.x * delta.x + delta.y * delta.y;
@@ -3082,7 +3065,9 @@ export class Game {
 
         this.getAimLockCandidates(lockingPlayer).forEach(({ entity, stableIndex }) => {
             if (!Number.isFinite(entity.x) || !Number.isFinite(entity.y) || !Number.isFinite(entity.radius)) return;
-            const delta = nearestWrappedDisplacement(lockingPlayer.x, lockingPlayer.y, entity.x, entity.y);
+            const delta = Game.prototype.isWrappedWorld.call(this)
+                ? nearestWrappedDisplacement(lockingPlayer.x, lockingPlayer.y, entity.x, entity.y)
+                : { x: entity.x - lockingPlayer.x, y: entity.y - lockingPlayer.y };
             const alongRay = delta.x * direction.x + delta.y * direction.y;
             if (alongRay <= 0 || alongRay > CONTROLLER_LOCK_MAX_DISTANCE) return;
             const perpendicular = Math.abs(delta.x * direction.y - delta.y * direction.x);
@@ -3592,12 +3577,6 @@ export class Game {
                         }
                     }
                     
-                    // Handle burst fire triggered by player internal state
-                    if (player.shouldTriggerBurstFire) {
-                        this.handleFire(player.id, true); // true = silent/secondary burst shot
-                        player.shouldTriggerBurstFire = false;
-                    }
-
                     // Firing Logic
                     if (player.id === 1 && player.controlMode === 'KEYBOARD') {
                         // Mouse Autofire
@@ -3644,11 +3623,6 @@ export class Game {
                     player.resolveNPCLevelUps();
                     if (player.justPrestiged) prestigeTriggers.push(player);
                     
-                    if (player.shouldTriggerBurstFire) {
-                        this.handleFire(player.id, true);
-                        player.shouldTriggerBurstFire = false;
-                    }
-
                     if (!this.victoryFadeActive && !this.victoryScreenActive && player.shouldFire) {
                         this.handleFire(player.id);
                         player.shouldFire = false;
@@ -3692,6 +3666,10 @@ export class Game {
                         (room.bounds.top + room.bounds.bottom) / 2
                     );
                 });
+        } else if (worldRules.bounded) {
+            this.players
+                .filter(player => !player.isDead && !player.isFixedPositionNPC && !player.isTranslationLocked())
+                .forEach(player => Game.prototype.resolveBoundedSlide.call(this, player, worldRules.room));
         }
 
         simulationAsteroids.forEach(a => {
@@ -3708,6 +3686,11 @@ export class Game {
             asteroids: simulationAsteroids,
             hazards: simulationHazards
         });
+        else if (worldRules.bounded) {
+            Game.prototype.resolveBoundedBodies.call(
+                this, simulationAsteroids, simulationHazards, worldRules.room
+            );
+        }
         
         // Materialize after firing and Satellite updates so newly inserted shots
         // retain the existing same-frame update and collision behavior.
@@ -3727,6 +3710,8 @@ export class Game {
                 : this.players;
             p.update(dt, this.asteroids, projectilePlayers, this.hazards, this.projectiles, worldRules);
             if (worldRules.usesRooms && this.resolveExperimentalProjectileWall(p)) continue;
+            if (worldRules.bounded
+                && Game.prototype.resolveBoundedProjectileWall.call(this, p, worldRules.room)) continue;
             
             // Lasers persist only while on screen (visible in any active camera)
             if (p.isLaser) {
@@ -3782,7 +3767,8 @@ export class Game {
         Game.prototype.updateCombatMusic.call(this, dt);
         
         if (this.players[0]) {
-            if (worldRules.usesRooms) this.camera.useDirectWorld();
+            if (worldRules.bounded) this.camera.useRoomBounds(worldRules.room.bounds);
+            else if (worldRules.wrap === false) this.camera.useDirectWorld();
             else this.camera.useWrappedWorld();
             this.camera.follow(this.players[0]);
         }
@@ -3940,7 +3926,7 @@ export class Game {
         return player.roomId;
     }
 
-    findExperimentalSweptWallHit(entity, walls, thickness) {
+    findSweptWallHit(entity, walls, thickness) {
         if (!Number.isFinite(entity.previousX) || !Number.isFinite(entity.previousY)) return null;
         const from = { x: entity.previousX, y: entity.previousY };
         const to = { x: entity.x, y: entity.y };
@@ -3952,12 +3938,75 @@ export class Game {
         return firstHit;
     }
 
+    findBoundedWallHit(entity, world = ARCADE_BOUNDED_WORLD) {
+        return Game.prototype.findSweptWallHit.call(
+            this, entity, world.walls, world.wallCollisionThickness
+        );
+    }
+
+    resolveBoundedSlide(entity, world = ARCADE_BOUNDED_WORLD) {
+        let collided = false;
+        const swept = Game.prototype.findBoundedWallHit.call(this, entity, world);
+        if (swept) {
+            entity.x = swept.hit.x;
+            entity.y = swept.hit.y;
+            correctWallPenetration(entity, swept.hit, world.collisionEpsilon);
+            slideVelocity(entity, swept.hit.normal);
+            collided = true;
+        }
+        for (let pass = 0; pass < world.maxCorrectionPasses; pass++) {
+            let passCollision = false;
+            for (const wall of world.walls) {
+                const contact = circleThickSegmentContact(entity, wall, world.wallCollisionThickness);
+                if (!contact) continue;
+                correctWallPenetration(entity, contact, world.collisionEpsilon);
+                slideVelocity(entity, contact.normal);
+                passCollision = true;
+                collided = true;
+            }
+            if (!passCollision) break;
+        }
+        return collided;
+    }
+
+    resolveBoundedBodies(asteroids = this.asteroids, hazards = this.hazards, world = ARCADE_BOUNDED_WORLD) {
+        for (const entity of [...asteroids, ...hazards]) {
+            const swept = Game.prototype.findBoundedWallHit.call(this, entity, world);
+            if (swept) {
+                entity.x = swept.hit.x;
+                entity.y = swept.hit.y;
+                correctWallPenetration(entity, swept.hit, world.collisionEpsilon);
+                reflectVelocity(entity, swept.hit.normal);
+            }
+            for (const wall of world.walls) {
+                const contact = circleThickSegmentContact(entity, wall, world.wallCollisionThickness);
+                if (!contact) continue;
+                correctWallPenetration(entity, contact, world.collisionEpsilon);
+                reflectVelocity(entity, contact.normal);
+            }
+        }
+    }
+
+    resolveBoundedProjectileWall(projectile, world = ARCADE_BOUNDED_WORLD) {
+        if (projectile.isRemoved) return false;
+        const swept = Game.prototype.findBoundedWallHit.call(this, projectile, world);
+        if (!swept) return false;
+        projectile.x = swept.hit.x;
+        projectile.y = swept.hit.y;
+        if (projectile.isMissile || projectile.isSkinnyMissile) {
+            if (projectile.isSkinnyMissile) this.detonateAoEProjectile(projectile);
+            else this.detonateMissile(projectile);
+        }
+        this.removeProjectile(projectile);
+        return true;
+    }
+
     resolveExperimentalSlide(entity) {
         const room = Game.prototype.getExperimentalRoom.call(this, entity.roomId) || this.experimentalRooms[0];
         if (!room) return false;
         const walls = Game.prototype.getExperimentalCollisionWallCandidates.call(this, entity);
         let collided = false;
-        const swept = Game.prototype.findExperimentalSweptWallHit.call(this, entity, walls, room.wallCollisionThickness);
+        const swept = Game.prototype.findSweptWallHit.call(this, entity, walls, room.wallCollisionThickness);
         if (swept) {
             entity.x = swept.hit.x;
             entity.y = swept.hit.y;
@@ -3989,7 +4038,7 @@ export class Game {
         for (const asteroid of asteroids) {
             const room = Game.prototype.getExperimentalRoom.call(this, asteroid.roomId) || fallbackRoom;
             const walls = Game.prototype.getExperimentalCollisionWallCandidates.call(this, asteroid);
-            const swept = Game.prototype.findExperimentalSweptWallHit.call(this, asteroid, walls, room.wallCollisionThickness);
+            const swept = Game.prototype.findSweptWallHit.call(this, asteroid, walls, room.wallCollisionThickness);
             if (swept) {
                 if (asteroid.size === 'small') {
                     destroyedSmall.push({ asteroid, replenish: swept.wall.isDoorBlocker === true });
@@ -4020,7 +4069,7 @@ export class Game {
         for (const hazard of hazards) {
             const room = Game.prototype.getExperimentalRoom.call(this, hazard.roomId) || fallbackRoom;
             const walls = Game.prototype.getExperimentalCollisionWallCandidates.call(this, hazard);
-            const swept = Game.prototype.findExperimentalSweptWallHit.call(this, hazard, walls, room.wallCollisionThickness);
+            const swept = Game.prototype.findSweptWallHit.call(this, hazard, walls, room.wallCollisionThickness);
             if (swept) {
                 hazard.x = swept.hit.x;
                 hazard.y = swept.hit.y;
@@ -4361,7 +4410,6 @@ export class Game {
         if (!player || player.isDead || player.currentHP > 0) return;
         player.isDead = true;
         player.deaths++;
-        player.cancelBurstFire();
         player.resetControllerAimLock(true);
         if (!player.isNPC && player.id === 1) Game.prototype.resetTouchInput.call(this);
         this.clearAimLocksForTarget(player);
@@ -4497,7 +4545,7 @@ export class Game {
     }
 
     areProjectilesColliding(first, second) {
-        if (this.gameState === GAME_MODE.EXPERIMENTAL) return checkCollision(first, second);
+        if (!Game.prototype.isWrappedWorld.call(this)) return checkCollision(first, second);
         const delta = nearestWrappedDisplacement(first.x, first.y, second.x, second.y);
         return Math.hypot(delta.x, delta.y) < first.radius + second.radius;
     }
@@ -4731,7 +4779,7 @@ export class Game {
         }
         const isExperimental = this.gameState === GAME_MODE.EXPERIMENTAL;
         return forEachNearbyCirclePair(projectiles, callback, {
-            wrap: !isExperimental,
+            wrap: Game.prototype.isWrappedWorld.call(this),
             width: WORLD_WIDTH,
             height: WORLD_HEIGHT,
             getPartition: isExperimental ? projectile => projectile.roomId || '' : undefined
@@ -4741,7 +4789,7 @@ export class Game {
     createProjectileCollisionSpatialHash(projectiles) {
         const isExperimental = this.gameState === GAME_MODE.EXPERIMENTAL;
         return new CircleSpatialHash(projectiles, {
-            wrap: !isExperimental,
+            wrap: Game.prototype.isWrappedWorld.call(this),
             width: WORLD_WIDTH,
             height: WORLD_HEIGHT,
             getPartition: isExperimental ? projectile => projectile.roomId || '' : undefined
@@ -4842,7 +4890,7 @@ export class Game {
             const candidate = localProjectiles[j];
             if (!candidate || candidate === missile || candidate.isRemoved || candidate.hasDetonated) continue;
             if (!Game.prototype.areExperimentalEntitiesCoLocated.call(this, missile, candidate)) continue;
-            const delta = this.gameState === GAME_MODE.EXPERIMENTAL
+            const delta = !Game.prototype.isWrappedWorld.call(this)
                 ? { x: candidate.x - missile.x, y: candidate.y - missile.y }
                 : nearestWrappedDisplacement(missile.x, missile.y, candidate.x, candidate.y);
             const dist = Math.hypot(delta.x, delta.y);
@@ -5206,6 +5254,9 @@ export class Game {
             this.drawExperimentalSectorBackground(ctx, camera, renderContext);
             this.drawExperimentalScenery(ctx, camera, renderContext);
             this.drawExperimentalWalls(ctx, camera, renderContext);
+        }
+        if (this.gameState === GAME_MODE.ARCADE) {
+            Game.prototype.drawBoundedWalls.call(this, ctx, camera, ARCADE_BOUNDED_WORLD);
         }
 
         const source = (kind, canonical) => renderContext
@@ -5727,6 +5778,29 @@ export class Game {
             ctx.beginPath();
             ctx.moveTo(0, 0);
             ctx.lineTo(dx, dy);
+            ctx.stroke();
+            ctx.restore();
+        }
+    }
+
+    drawBoundedWalls(ctx, camera, world = ARCADE_BOUNDED_WORLD) {
+        for (const wall of world.walls) {
+            const dx = wall.end.x - wall.start.x;
+            const dy = wall.end.y - wall.start.y;
+            ctx.save();
+            camera.apply(ctx, wall.start.x, wall.start.y);
+            ctx.lineCap = 'round';
+            ctx.shadowColor = '#00ffff';
+            ctx.shadowBlur = 28;
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.22)';
+            ctx.lineWidth = world.wallCollisionThickness;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(dx, dy);
+            ctx.stroke();
+            ctx.shadowBlur = 10;
+            ctx.strokeStyle = '#00ffff';
+            ctx.lineWidth = world.wallVisualCoreThickness;
             ctx.stroke();
             ctx.restore();
         }

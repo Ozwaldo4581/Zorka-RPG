@@ -2,7 +2,7 @@ import { nearestWrappedDisplacement, updateNewtonian } from '../physics.js';
 import { WORLD_WIDTH, WORLD_HEIGHT } from '../world_config.js';
 
 export const MISSILE_HOMING_TURN_RATE = 2.7;
-export const STANDARD_PROJECTILE_HOMING_FACTOR = 0.3;
+export const STANDARD_PROJECTILE_HOMING_FACTOR = 0.7;
 
 export class Projectile {
     constructor(x, y, vx, vy, color = '#00ffff') {

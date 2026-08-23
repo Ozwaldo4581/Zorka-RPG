@@ -133,7 +133,6 @@ test('Projectile upgrades extend clip capacity without changing each round patte
             player.projectileUpgradeCount = upgrades;
             const base = gun === 'Normal' ? 1 : 2;
             assert.equal(player.getGunProjectiles(0, 0, 0).length, base, `${gun} pattern at ${upgrades}`);
-            assert.equal(player.getBurstRoundCount(), 3, `${gun} cadence at ${upgrades}`);
             assert.equal(player.getStandardProjectileCapacity(), 12 + upgrades * 2);
         }
     }
@@ -184,7 +183,7 @@ test('Martian base fire shares Earthling cadence and Capsule 3 does not add a ti
     const fireOnce = player => {
         player.spawnImmunityTimer = 0;
         const shots = player.fire();
-        return { shots, cooldown: player.fireCooldown, burstCount: player.burstCount };
+        return { shots, cooldown: player.fireCooldown };
     };
     const earthling = fireOnce(new Player(0, 0));
     const martianPlayer = new Player(0, 0);
@@ -193,7 +192,6 @@ test('Martian base fire shares Earthling cadence and Capsule 3 does not add a ti
     const martian = fireOnce(martianPlayer);
 
     assert.equal(martian.cooldown, earthling.cooldown);
-    assert.equal(martian.burstCount, earthling.burstCount);
     assert.equal(martian.shots.length, 2);
 });
 
@@ -387,13 +385,11 @@ test('Hardcore resets victim level progress only after a confirmed unshielded de
     standardVictim.totalXP = 100;
     standardVictim.level = 1;
     standardVictim.pendingLevelUps = 1;
-    standardVictim.burstCount = 4;
     const standardGame = makeGame([standardVictim], false);
     for (let hit = 0; hit < 10; hit++) Game.prototype.playerDeath.call(standardGame, standardVictim);
     assert.equal(standardVictim.level, 1);
     assert.equal(standardVictim.totalXP, 100);
     assert.equal(standardVictim.pendingLevelUps, 1);
-    assert.equal(standardVictim.burstCount, 0);
 
     const shielded = new Player(0, 0);
     shielded.spawnImmunityTimer = 0;
