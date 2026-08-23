@@ -4,14 +4,6 @@ export const EXPERIMENTAL_WALL_SEPARATION_EPSILON = 0.5;
 export const EXPERIMENTAL_WALL_MAX_CORRECTION_PASSES = 4;
 
 const SPAWN_INSET = 120;
-const SPAWN_STRUCTURE_INNER_RADIUS = 650;
-const SPAWN_STRUCTURE_OUTER_RADIUS = 1000;
-const SPAWN_STRUCTURE_INNER_GAP = Math.PI * 0.42;
-const SPAWN_STRUCTURE_INNER_GAP_CENTER = Math.PI / 2;
-const SPAWN_STRUCTURE_OUTER_GAP_SCALE = 0.5;
-// Keeping each chord within two collision widths makes the ring feel round at
-// ship scale while avoiding an unnecessarily dense static-wall collection.
-const SPAWN_STRUCTURE_MAX_SEGMENT_LENGTH = EXPERIMENTAL_WALL_COLLISION_THICKNESS * 2;
 // A normal ship renders at 3.5 times its 25-unit collision radius. Sector 9's
 // cover clearance is five of those normal physical footprints.
 export const EXPERIMENTAL_NORMAL_SHIP_LENGTH = 25 * 3.5;
@@ -143,50 +135,16 @@ const wall = (id, x1, y1, x2, y2, isTwoSided = false) => Object.freeze({
     id, start: point(x1, y1), end: point(x2, y2), ...(isTwoSided ? { isTwoSided: true } : {})
 });
 
-function createSpawnStructure(center) {
-    const ring = (id, radius, gapCenter, gapSize) => Object.freeze({
-        id,
-        center,
-        radius,
-        gapCenter,
-        gapSize,
-        startAngle: gapCenter + gapSize / 2,
-        endAngle: gapCenter - gapSize / 2 + Math.PI * 2
-    });
-    return Object.freeze({
-        id: 'adventure-spawn-rings',
-        center,
-        rings: Object.freeze([
-            ring('inner', SPAWN_STRUCTURE_INNER_RADIUS, SPAWN_STRUCTURE_INNER_GAP_CENTER, SPAWN_STRUCTURE_INNER_GAP),
-            ring(
-                'outer',
-                SPAWN_STRUCTURE_OUTER_RADIUS,
-                SPAWN_STRUCTURE_INNER_GAP_CENTER + Math.PI,
-                SPAWN_STRUCTURE_INNER_GAP * SPAWN_STRUCTURE_OUTER_GAP_SCALE
-            )
-        ])
-    });
-}
-
 const interiorWall = (id, x1, y1, x2, y2) => wall(id, x1, y1, x2, y2, true);
 
-function buildSpawnStructureWalls(areaId, structure) {
-    return structure.rings.flatMap(ring => {
-        const solidAngle = ring.endAngle - ring.startAngle;
-        const segmentCount = Math.ceil(solidAngle * ring.radius / SPAWN_STRUCTURE_MAX_SEGMENT_LENGTH);
-        const angleStep = solidAngle / segmentCount;
-        return Array.from({ length: segmentCount }, (_, index) => {
-            const startAngle = ring.startAngle + angleStep * index;
-            const endAngle = ring.startAngle + angleStep * (index + 1);
-            return interiorWall(
-                `${areaId}-spawn-ring-${ring.id}-${index}`,
-                ring.center.x + Math.cos(startAngle) * ring.radius,
-                ring.center.y + Math.sin(startAngle) * ring.radius,
-                ring.center.x + Math.cos(endAngle) * ring.radius,
-                ring.center.y + Math.sin(endAngle) * ring.radius
-            );
-        });
-    });
+function buildLeftNookWalls(areaId, bounds) {
+    const centerY = (bounds.top + bounds.bottom) / 2;
+    const halfWidth = EXPERIMENTAL_HALLWAY_WIDTH / 2;
+    const entranceX = bounds.left + EXPERIMENTAL_HALLWAY_LENGTH;
+    return Object.freeze([
+        interiorWall(`${areaId}-interior-left-nook-top`, bounds.left, centerY - halfWidth, entranceX, centerY - halfWidth),
+        interiorWall(`${areaId}-interior-left-nook-bottom`, bounds.left, centerY + halfWidth, entranceX, centerY + halfWidth)
+    ]);
 }
 
 export class ExperimentalWallSpatialIndex {
@@ -452,10 +410,9 @@ export function createExperimentalAreas(roomWidth, roomHeight) {
     };
     const b = shell.bounds;
     const initialSpawn = point((b.left + b.right) / 2, (b.top + b.bottom) / 2);
-    const spawnStructure = createSpawnStructure(initialSpawn);
     const walls = [
         ...buildWalls(shell, []),
-        ...buildSpawnStructureWalls(shell.id, spawnStructure)
+        ...buildLeftNookWalls(shell.id, b)
     ];
     return [createExperimentalArea({
         ...shell,
@@ -468,7 +425,12 @@ export function createExperimentalAreas(roomWidth, roomHeight) {
         collisionEpsilon: EXPERIMENTAL_WALL_SEPARATION_EPSILON,
         maxCorrectionPasses: EXPERIMENTAL_WALL_MAX_CORRECTION_PASSES,
         initialSpawn,
-        spawnStructure,
+        leftNook: Object.freeze({
+            direction: 'LEFT',
+            length: EXPERIMENTAL_HALLWAY_LENGTH,
+            width: EXPERIMENTAL_HALLWAY_WIDTH,
+            deadEnd: true
+        }),
         spawnRegion: Object.freeze({
             left: b.left + SPAWN_INSET,
             top: b.top + SPAWN_INSET,

@@ -5061,9 +5061,6 @@ export class Game {
                     usesRooms: this.gameState === GAME_MODE.EXPERIMENTAL,
                     owner: this.players[0],
                     rooms: this.experimentalRooms,
-                    worldGeometry: this.gameState === GAME_MODE.EXPERIMENTAL
-                        ? this.experimentalRooms[0]?.spawnStructure
-                        : null,
                     hazards: this.hazards,
                     gameMode: this.gameState,
                     profileName: this.gameState === GAME_MODE.EXPERIMENTAL
@@ -5262,7 +5259,6 @@ export class Game {
         if (this.gameState === GAME_MODE.EXPERIMENTAL) {
             this.drawExperimentalSectorBackground(ctx, camera, renderContext);
             this.drawExperimentalScenery(ctx, camera, renderContext);
-            this.drawExperimentalSpawnStructure(ctx, camera, renderContext);
             this.drawExperimentalWalls(ctx, camera, renderContext);
         }
         if (this.gameState === GAME_MODE.ARCADE) {
@@ -5466,22 +5462,6 @@ export class Game {
 
     drawExperimentalScenery() {
         // Single-sector Adventure has no campaign scenery composition.
-    }
-
-    drawExperimentalSpawnStructure(ctx, camera, renderContext = null) {
-        const structure = renderContext?.currentArea?.spawnStructure;
-        if (!structure) return;
-        ctx.save();
-        camera.apply(ctx, structure.center.x, structure.center.y);
-        ctx.strokeStyle = '#00e5e5';
-        ctx.lineWidth = 5;
-        ctx.lineCap = 'round';
-        for (const ring of structure.rings) {
-            ctx.beginPath();
-            ctx.arc(0, 0, ring.radius, ring.startAngle, ring.endAngle);
-            ctx.stroke();
-        }
-        ctx.restore();
     }
 
     drawExperimentalDialogue() {

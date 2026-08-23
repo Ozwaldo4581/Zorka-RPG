@@ -567,18 +567,6 @@ export class HUD {
             });
             ctx.stroke();
 
-            const structure = minimapContext.worldGeometry;
-            if (structure) {
-                const center = positionOnMap(structure.center);
-                const roomScale = mapWidth / room.width;
-                ctx.strokeStyle = 'rgba(0, 229, 229, 0.85)';
-                ctx.lineWidth = 1;
-                for (const ring of structure.rings) {
-                    ctx.beginPath();
-                    ctx.arc(center.x, center.y, ring.radius * roomScale, ring.startAngle, ring.endAngle);
-                    ctx.stroke();
-                }
-            }
         }
 
         // Asteroids
