@@ -274,7 +274,7 @@ export class Game {
         this.experimentalNewGamePlusCycle = 0;
         this.experimentalUnlockedShortcutIds = new Set();
         this.experimentalShortcutPromptedIds = new Set();
-        this.sector9BBGEncounter = this.createSector9BBGEncounterState();
+        this.sector9BBGEncounter = null;
         this.victoryFadeTimer = 0;
         this.victoryFadeActive = false;
         this.victoryScreenActive = false;
@@ -333,8 +333,7 @@ export class Game {
             schoolDeskBackground: await this.loadImage('assets/SchoolDeskZorka7.png'),
             schoolDeskTutorial1: await this.loadImage('assets/SchoolDeskFullTutorial1.png'),
             schoolDeskTutorial2: await this.loadImage('assets/SchoolDeskFullTutorial2.png'),
-            schoolDeskVisor: await this.loadImage('assets/SchoolDeskZorkaVisor3.png'),
-            bbgScenery: await this.loadImage(SECTOR_9_BBG_ENCOUNTER.imagePath)
+            schoolDeskVisor: await this.loadImage('assets/SchoolDeskZorkaVisor3.png')
         };
     }
 
@@ -1769,7 +1768,7 @@ export class Game {
             const index = this.players.indexOf(player);
             if (index !== -1) this.players.splice(index, 1);
         }
-        this.sector9BBGEncounter = Game.prototype.createSector9BBGEncounterState.call(this);
+        this.sector9BBGEncounter = null;
         return Game.prototype.spawnSector9BBGEncounter.call(this);
     }
 
@@ -1912,7 +1911,7 @@ export class Game {
             activeSequenceId: null,
             activeElapsed: 0
         };
-        this.sector9BBGEncounter = Game.prototype.createSector9BBGEncounterState.call(this);
+        this.sector9BBGEncounter = null;
         this.victoryFadeTimer = 0;
         this.victoryFadeActive = false;
         this.victoryScreenActive = false;
