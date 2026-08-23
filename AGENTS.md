@@ -2,7 +2,7 @@
 
 You are a JavaScript game-development pair programmer for this repository. Prioritize working, testable progress over perfect process.
 
-This file describes the current repository and protects the ownership boundaries that keep Zorka’s standard arenas, Arcade Mode, and Experimental Mode working from one shared gameplay foundation.
+This file describes the current repository and protects the ownership boundaries that keep Zorka’s Arcade Mode and Local PvP Mode working from one shared gameplay foundation.
 
 ## Project Baseline
 
@@ -10,12 +10,10 @@ Zorka is a local-first, top-down Newtonian asteroid shooter built with plain ES 
 
 The standard wrapped arena is a **17280 × 9720** world: a 9 × 9 grid of 1920 × 1080 design screens. `DESIGN_WIDTH`, `DESIGN_HEIGHT`, `WORLD_WIDTH`, and `WORLD_HEIGHT` in `game.js` are shared contracts for standard modes.
 
-Current game modes are:
+Current playable game modes are:
 
-- **Solo Arena** — one local player plus NPC ships.
 - **Local PvP Arena** — local/split-screen play with up to eight ships.
 - **Arcade Mode** — a one-life progression challenge with escalating NPC waves.
-- **Experimental Mode** — a separate nine-room campaign shell connected by eleven long hallways, including three persistent shortcuts, with bounded movement, room-local populations, room-aware collision/rendering, and selective simulation.
 
 Baseline desktop controls:
 
@@ -45,8 +43,8 @@ Keep these familiar asset locations stable unless asset migration is explicitly 
 - UI, rendering, camera, and audio must not own combat, progression, room membership, or match truth.
 - Do not perform large refactors without explaining the concrete need and asking first.
 - Preserve the shared `Player`, `Projectile`, hazard, collision-result, reward, and input contracts across modes.
-- Standard modes must retain wrapped-world behavior. Experimental Mode may disable wrapping only through its explicit world-rules seam.
-- Experimental Mode must remain a separate mode; do not replace or silently alter Solo Arena, Local PvP, or Arcade rules to implement it.
+- Arcade and Local PvP retain standard wrapped-world behavior.
+- Adventure is not a runtime mode; preserve only its static menu artwork while shared RPG mechanics belong to Player, Projectile, Game, and physics seams.
 - Online multiplayer is out of scope. `network_manager.js` is legacy and `Game.network` is intentionally `null` in the active build.
 - For bugs involving hits, destruction, rewards, HP, shields, death, respawn, room transfer, or timing, inspect the owning gameplay path before patching HUD/menu/audio behavior.
 
@@ -67,6 +65,15 @@ Keep these familiar asset locations stable unless asset migration is explicitly 
 - Preserve responsive controls and clear momentum feedback.
 - Prefer named mode/world-rule seams over scattered string comparisons.
 - Keep menu terminology aligned with the actual screens and modes.
+
+
+### Zorka RPG shared mechanical contract
+
+- Movement is aim-relative. Human movement coefficient is 1.0 and NPC movement coefficient is 0.8.
+- Player owns its clip: Standard begins at 12, Projectile upgrades add 2, Laser derives at 50%, Orb derives at 33.333% using nearest-whole normalization, and empty reload takes 7 seconds.
+- Player owns manual missile cooldown. Keyboard/mouse Player 1 fires with E; tiers use 13/9/5 seconds. No automatic missile firing or new controller binding.
+- Ordinary projectiles use only their owner's valid live lock at 0.3 missile homing strength.
+- Adventure was the migration authority for this fork but is not playable and must not own shared runtime behavior.
 
 ## 1) Workflow Expectations
 

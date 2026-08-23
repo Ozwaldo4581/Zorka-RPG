@@ -78,7 +78,7 @@ test('Laser, missile, and transformation-specific projectiles remain uncapped', 
     const missileOwner = makePlayer('Normal');
     missileOwner.hasMissile = true;
     missileOwner.missileLevel = 3;
-    const missile = missileOwner.fire().find(shot => shot.isMissile);
+    const missile = missileOwner.fireMissile().find(shot => shot.isMissile);
     assert.equal(missile.maxTravelDistance, null);
 
     for (const transformation of ['isMartian', 'isCyborg', 'isDimensionX']) {

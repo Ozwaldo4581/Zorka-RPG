@@ -5,7 +5,6 @@ import { Projectile } from './entities/projectile.js';
 import { Camera, DEFAULT_GAMEPLAY_ZOOM } from './camera.js';
 import { HUD } from './ui/hud.js';
 import { AudioManager } from './audio_manager.js';
-import { ExperimentalProfileStore } from './persistence/experimental_profiles.js';
 import {
     checkCollision,
     nearestWrappedDisplacement,
@@ -16,16 +15,6 @@ import {
     sweptCircleSegmentIntersection,
     isLineBlockedByWalls
 } from './physics.js';
-import {
-    createExperimentalAreas,
-    createExperimentalDoors,
-    createExperimentalWallSpatialIndexes,
-    EXPERIMENTAL_COLLISION_CATEGORY,
-    EXPERIMENTAL_SHORTCUT_ID,
-    SECTOR_9_BBG_ENCOUNTER,
-    getSector9BBGImageRect,
-    getSector9BBGAnchorWorldPosition
-} from './world/experimental_rooms.js';
 import { CircleSpatialHash, forEachNearbyCirclePair } from './world/spatial_hash.js';
 import { DESIGN_WIDTH, DESIGN_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT } from './world_config.js';
 
@@ -38,6 +27,8 @@ export const GAME_MODE = Object.freeze({
     SOLO: 'SOLO',
     PVP: 'PVP',
     ARCADE: 'ARCADE',
+    // Legacy discriminator retained only so old serialized/test fixtures cannot
+    // alias an undefined game state. It has no menu or runtime launch route.
     EXPERIMENTAL: 'EXPERIMENTAL'
 });
 export const PLAYER_COLORS = Object.freeze([
@@ -234,7 +225,7 @@ export class Game {
         // null makes it clear that no Supabase/network code is required to
         // launch or play the local game.
         this.network = null;
-        this.experimentalProfiles = new ExperimentalProfileStore();
+        // Adventure profiles are intentionally absent from the RPG runtime.
         this.selectedExperimentalProfileSlot = null;
         this.pendingExperimentalProfileSlot = null;
 
@@ -283,7 +274,7 @@ export class Game {
         this.experimentalNewGamePlusCycle = 0;
         this.experimentalUnlockedShortcutIds = new Set();
         this.experimentalShortcutPromptedIds = new Set();
-        this.sector9BBGEncounter = this.createSector9BBGEncounterState();
+        this.sector9BBGEncounter = null;
         this.victoryFadeTimer = 0;
         this.victoryFadeActive = false;
         this.victoryScreenActive = false;
@@ -342,8 +333,7 @@ export class Game {
             schoolDeskBackground: await this.loadImage('assets/SchoolDeskZorka7.png'),
             schoolDeskTutorial1: await this.loadImage('assets/SchoolDeskFullTutorial1.png'),
             schoolDeskTutorial2: await this.loadImage('assets/SchoolDeskFullTutorial2.png'),
-            schoolDeskVisor: await this.loadImage('assets/SchoolDeskZorkaVisor3.png'),
-            bbgScenery: await this.loadImage(SECTOR_9_BBG_ENCOUNTER.imagePath)
+            schoolDeskVisor: await this.loadImage('assets/SchoolDeskZorkaVisor3.png')
         };
     }
 
@@ -808,6 +798,10 @@ export class Game {
                 return;
             }
             this.keys[e.code] = true;
+            if (e.code === 'KeyE' && !e.repeat && this.isInGameplayState()) {
+                Game.prototype.handleMissileFire.call(this, 1);
+                e.preventDefault();
+            }
             if (Game.prototype.handleLevelUpgradeKey.call(this, e.code)) {
                 e.preventDefault();
                 return;
@@ -945,44 +939,6 @@ export class Game {
             this.selectedBotCount = 0;
             document.querySelectorAll('.bot-count-btn').forEach(b => b.classList.remove('selected'));
             this.updateSoloMockLobby(0);
-        });
-
-        document.getElementById('btn-experimental-start').addEventListener('click', () => {
-            this.showExperimentalProfileSelection();
-        });
-        document.getElementById('btn-experimental-profile-play').addEventListener('click', () => {
-            this.playSelectedExperimentalProfile();
-        });
-        document.getElementById('btn-experimental-profile-change').addEventListener('click', () => {
-            this.closeExperimentalProfileActions();
-        });
-        document.getElementById('btn-experimental-profile-delete').addEventListener('click', () => {
-            this.openExperimentalProfileDeleteConfirmation();
-        });
-        document.getElementById('btn-profile-delete-confirm').addEventListener('click', () => {
-            this.deleteSelectedExperimentalProfile();
-        });
-        document.getElementById('btn-profile-delete-cancel').addEventListener('click', () => {
-            this.closeExperimentalProfileDeleteConfirmation();
-        });
-        document.getElementById('btn-experimental-profile-back').addEventListener('click', () => {
-            this.hideExperimentalProfileNameEntry();
-            document.getElementById('experimental-profile-menu').classList.add('hidden');
-            document.getElementById('experimental-profile-actions').classList.add('hidden');
-            document.getElementById('profile-delete-confirmation').classList.add('hidden');
-            document.getElementById('main-menu').classList.remove('hidden');
-        });
-        document.getElementById('btn-experimental-profile-cancel').addEventListener('click', () => {
-            this.hideExperimentalProfileNameEntry();
-        });
-        document.getElementById('btn-experimental-profile-create').addEventListener('click', () => {
-            this.createSelectedExperimentalProfile();
-        });
-        document.getElementById('experimental-profile-name').addEventListener('keydown', event => {
-            if (event.key === 'Enter') {
-                event.preventDefault();
-                this.createSelectedExperimentalProfile();
-            }
         });
 
         document.getElementById('btn-solo-back').addEventListener('click', () => {
@@ -1328,11 +1284,6 @@ export class Game {
 
         document.getElementById('btn-quit-yes').addEventListener('click', () => this.confirmQuit());
         document.getElementById('btn-quit-no').addEventListener('click', () => this.closeQuitConfirmation());
-        document.getElementById('btn-victory-continue')?.addEventListener('click', () => this.openVictoryContinueConfirmation());
-        document.getElementById('btn-victory-new-game-plus')?.addEventListener('click', () => this.startExperimentalNewGamePlus());
-        document.getElementById('btn-victory-continue-confirm')?.addEventListener('click', () => this.confirmVictoryContinue());
-        document.getElementById('btn-victory-continue-cancel')?.addEventListener('click', () => this.closeVictoryContinueConfirmation());
-
         // Transformation Kills Logic
         const transValueEl = document.getElementById('trans-value');
         const transIncBtn = document.getElementById('trans-inc');
@@ -1525,7 +1476,7 @@ export class Game {
     getInteractiveElements(container) {
         if (!container) return [];
         return Array.from(container.querySelectorAll('button:not([disabled]), .lobby-item')).filter(element => (
-            element.offsetParent !== null && !element.closest('.hidden')
+            element.offsetParent !== null && !element.closest('.hidden') && !element.hasAttribute('data-noninteractive')
         ));
     }
 
@@ -1817,7 +1768,7 @@ export class Game {
             const index = this.players.indexOf(player);
             if (index !== -1) this.players.splice(index, 1);
         }
-        this.sector9BBGEncounter = Game.prototype.createSector9BBGEncounterState.call(this);
+        this.sector9BBGEncounter = null;
         return Game.prototype.spawnSector9BBGEncounter.call(this);
     }
 
@@ -1960,7 +1911,7 @@ export class Game {
             activeSequenceId: null,
             activeElapsed: 0
         };
-        this.sector9BBGEncounter = Game.prototype.createSector9BBGEncounterState.call(this);
+        this.sector9BBGEncounter = null;
         this.victoryFadeTimer = 0;
         this.victoryFadeActive = false;
         this.victoryScreenActive = false;
@@ -2982,6 +2933,20 @@ export class Game {
             }
             
         }
+    }
+
+    handleMissileFire(playerId) {
+        const player = this.players.find(candidate => candidate.id === playerId);
+        if (!player || player.isDead || player.isNPC || player.isWeaponLocked()
+            || this.victoryFadeActive || this.victoryScreenActive) return false;
+        const missiles = player.fireMissile();
+        if (!missiles?.length) return false;
+        missiles.forEach(missile => {
+            if (this.gameState === GAME_MODE.EXPERIMENTAL) missile.roomId = player.roomId;
+            Game.prototype.addProjectile.call(this, missile);
+        });
+        Game.prototype.playSpatialEvent.call(this, 'laser_fire', player.x, player.y, player.roomId, this.getActiveCameras());
+        return true;
     }
 
     getActiveCameras() {
@@ -4458,7 +4423,8 @@ export class Game {
         player.ghosts = []; 
         player.hasMissile = false;
         player.missileLevel = 0;
-        player.missileShotCounter = 0;
+        player.missileCooldown = 0;
+        player.resetClip();
         player.restoreShieldCharges(0);
         player.history = []; // Clear history so ghosts don't snap back to old positions on respawn
         player.martianParallelGuns = 1;
