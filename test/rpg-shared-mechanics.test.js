@@ -2,6 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     Player,
+    BALLISTIC_SHOT_INTERVAL,
+    LASER_SHOT_INTERVAL,
+    ORB_SHOT_INTERVAL,
+    PREVIOUS_BALLISTIC_SHOT_INTERVAL,
     BASE_PROJECTILE_CAPACITY,
     CLIP_RELOAD_DURATION,
     HUMAN_MOVEMENT_COEFFICIENT,
@@ -39,16 +43,40 @@ test('Player owns whole-number standard, Laser, and Orb clip capacities', () => 
     assert.equal(player.getClipCapacity(), 5, 'nearest-whole rounding preserves the requested one-third scaling');
 });
 
+test('explicit weapon families use their requested independent shot intervals', () => {
+    const player = new Player(0, 0);
+    player.spawnImmunityTimer = 0;
+    assert.equal(player.getWeaponFamily(), 'Ballistic');
+    assert.equal(player.fire()[0].isBallistic, true);
+    assert.equal(player.shotTimer, PREVIOUS_BALLISTIC_SHOT_INTERVAL / 3);
+    assert.equal(player.shotTimer, BALLISTIC_SHOT_INTERVAL);
+
+    player.activeGun = 'Laser';
+    player.weaponStreamCounts.Laser = 1;
+    player.shotTimer = 0;
+    player.fire();
+    assert.equal(player.getWeaponFamily(), 'Laser');
+    assert.equal(player.shotTimer, LASER_SHOT_INTERVAL);
+
+    player.activeGun = 'Orb';
+    player.weaponStreamCounts = { Laser: 0, Antigun: 0, Double: 0, Orb: 1 };
+    player.shotTimer = 0;
+    player.fire();
+    assert.equal(player.getWeaponFamily(), 'Orb');
+    assert.equal(player.shotTimer, PREVIOUS_BALLISTIC_SHOT_INTERVAL / 0.6);
+    assert.equal(player.shotTimer, ORB_SHOT_INTERVAL);
+});
+
 test('partial clips persist and empty clips reload after seven seconds', () => {
     const player = new Player(0, 0);
     player.spawnImmunityTimer = 0;
     player.fire();
     assert.equal(player.clipRounds, 11);
-    player.fireCooldown = 0;
+    player.shotTimer = 0;
     player.fire();
     assert.equal(player.clipRounds, 10, 'input release does not refill a partial clip');
     while (player.clipRounds > 0) {
-        player.fireCooldown = 0;
+        player.shotTimer = 0;
         player.fire(true);
     }
     assert.equal(player.clipReloadTimer, CLIP_RELOAD_DURATION);
@@ -59,20 +87,18 @@ test('partial clips persist and empty clips reload after seven seconds', () => {
     assert.equal(player.clipRounds, player.getClipCapacity());
 });
 
-test('manual missiles require an unlock and own independent tier cooldowns', () => {
-    const first = new Player(0, 0);
-    const second = new Player(0, 0, 2);
-    first.spawnImmunityTimer = second.spawnImmunityTimer = 0;
-    assert.equal(first.fireMissile(), null);
-    first.missileLevel = 1;
-    second.missileLevel = 3;
-    assert.equal(first.fireMissile().length, 1);
-    assert.equal(second.fireMissile().length, 1);
-    assert.equal(first.missileCooldown, 13);
-    assert.equal(second.missileCooldown, 5);
-    assert.equal(first.fireMissile(), null);
-    first.updateWeaponTimers(13);
-    assert.equal(first.fireMissile().length, 1);
+test('manual missiles require Player-owned ammunition and fixed reload', () => {
+    const player = new Player(0, 0);
+    player.spawnImmunityTimer = 0;
+    assert.equal(player.fireMissile(), null);
+    player.powerUpCapsules = 2;
+    assert.equal(player.activatePowerUp(), true);
+    assert.equal(player.fireMissile().length, 1);
+    assert.equal(player.missileAmmo, 0);
+    assert.equal(player.missileReloadTimer, 12);
+    assert.equal(player.fireMissile(), null);
+    player.updateWeaponTimers(12);
+    assert.equal(player.missileAmmo, 1);
 });
 
 test('ordinary projectiles use only their live owner lock at 0.3 missile strength', () => {
@@ -81,6 +107,7 @@ test('ordinary projectiles use only their live owner lock at 0.3 missile strengt
     const target = new Player(100, 0, 3);
     const projectile = new Projectile(0, 0, 0, -100);
     projectile.owner = owner;
+    projectile.isBallistic = true;
     otherOwner.lockedAimTarget = target;
     projectile.update(1, [], [owner, otherOwner, target]);
     assert.equal(projectile.vx, 0, 'another player lock cannot steer the shot');
@@ -99,7 +126,7 @@ test('held primary-fire attempts can discharge a complete clip at the establishe
     let accepted = 0;
     while (player.clipRounds > 0) {
         if (player.fire()) accepted++;
-        player.fireCooldown = 0;
+        player.shotTimer = 0;
     }
     assert.equal(accepted, capacity);
     assert.equal(player.clipRounds, 0);

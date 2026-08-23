@@ -71,7 +71,7 @@ test('standard projectile audio follows accepted continuous-fire cadence', () =>
     Game.prototype.handleFire.call(game, player.id);
     Game.prototype.handleFire.call(game, player.id);
     assert.deepEqual(sounds, ['laser_fire'], 'cooldown rejects same-frame repeats');
-    player.fireCooldown = 0;
+    player.shotTimer = 0;
     Game.prototype.handleFire.call(game, player.id);
     assert.deepEqual(sounds, ['laser_fire', 'laser_fire']);
 });

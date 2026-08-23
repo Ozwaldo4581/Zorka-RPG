@@ -18,6 +18,7 @@ export class Projectile {
         this.rotation = Math.atan2(vy, vx) + Math.PI / 2;
         this.canWrap = true;
         this.isLaser = false;
+        this.isBallistic = false;
         this.isGhost = false;
         this.isMissile = false;
         this.isDecoy = false;
@@ -77,7 +78,7 @@ export class Projectile {
     }
 
     updateStandardHoming(dt, asteroids, players, hazards, projectiles, worldRules = null) {
-        if (this.isLaser || this.isOrb || this.isGhost || this.isDecoy) return false;
+        if (!this.isBallistic || this.isGhost || this.isDecoy) return false;
         const target = this.owner?.lockedAimTarget;
         const sameArea = candidate => !worldRules?.usesRooms || candidate.roomId === this.roomId;
         const valid = target && target !== this.owner && sameArea(target) && (
