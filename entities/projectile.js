@@ -1,6 +1,9 @@
 import { nearestWrappedDisplacement, updateNewtonian } from '../physics.js';
 import { WORLD_WIDTH, WORLD_HEIGHT } from '../world_config.js';
 
+export const MISSILE_HOMING_TURN_RATE = 2.7;
+export const STANDARD_PROJECTILE_HOMING_FACTOR = 0.3;
+
 export class Projectile {
     constructor(x, y, vx, vy, color = '#00ffff') {
         this.x = x;
@@ -40,6 +43,7 @@ export class Projectile {
         } else if (this.isOrbital) {
             this.updateOrbital(dt);
         } else {
+            this.updateStandardHoming(dt, asteroids, players, hazards, projectiles, worldRules);
             const dx = this.vx * dt;
             const dy = this.vy * dt;
             this.x += dx;
@@ -70,6 +74,36 @@ export class Projectile {
         if (!this.isMissile && !this.isTentacle) {
             this.lifeSpan -= dt;
         }
+    }
+
+    updateStandardHoming(dt, asteroids, players, hazards, projectiles, worldRules = null) {
+        if (this.isLaser || this.isOrb || this.isGhost || this.isDecoy) return false;
+        const target = this.owner?.lockedAimTarget;
+        const sameArea = candidate => !worldRules?.usesRooms || candidate.roomId === this.roomId;
+        const valid = target && target !== this.owner && sameArea(target) && (
+            (players.includes(target) && !target.isDead && !target.isEliminated)
+            || (asteroids.includes(target) && !target.isDestroyed)
+            || (hazards.includes(target) && !target.isDestroyed)
+            || (projectiles.includes(target) && (target.isMissile || target.isSkinnyMissile)
+                && !target.hasDetonated && !target.isRemoved && target.lifeSpan > 0)
+        );
+        if (!valid) return false;
+
+        const delta = worldRules?.wrap === false
+            ? { x: target.x - this.x, y: target.y - this.y }
+            : nearestWrappedDisplacement(this.x, this.y, target.x, target.y);
+        const targetRotation = Math.atan2(delta.y, delta.x) + Math.PI / 2;
+        const currentRotation = Math.atan2(this.vy, this.vx) + Math.PI / 2;
+        let difference = targetRotation - currentRotation;
+        while (difference > Math.PI) difference -= Math.PI * 2;
+        while (difference < -Math.PI) difference += Math.PI * 2;
+        const maximumTurn = MISSILE_HOMING_TURN_RATE * STANDARD_PROJECTILE_HOMING_FACTOR * dt;
+        const rotation = currentRotation + Math.max(-maximumTurn, Math.min(maximumTurn, difference));
+        const speed = Math.hypot(this.vx, this.vy);
+        this.vx = Math.sin(rotation) * speed;
+        this.vy = -Math.cos(rotation) * speed;
+        this.rotation = rotation;
+        return true;
     }
 
     updateOrbital(dt) {
@@ -178,7 +212,7 @@ export class Projectile {
             while (diff > Math.PI) diff -= Math.PI * 2;
             while (diff < -Math.PI) diff += Math.PI * 2;
 
-            const maxTurn = 2.7 * dt;
+            const maxTurn = MISSILE_HOMING_TURN_RATE * dt;
             const newRot = currentRot + Math.max(-maxTurn, Math.min(maxTurn, diff));
             const speed = Math.hypot(this.vx, this.vy);
             this.vx = Math.sin(newRot) * speed;

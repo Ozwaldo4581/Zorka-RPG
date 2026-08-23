@@ -28,12 +28,12 @@ const updateController = (player, pad, targetIsValid = () => true) => {
     player.update(0.1, { mouse: mouseInput(), gamepads: [pad], isAimTargetValid: targetIsValid });
 };
 
-test('keyboard movement remains absolute with a valid lock', () => {
+test('keyboard movement remains aim-relative with a valid lock', () => {
     const player = new Player(100, 100);
 
     updateKeyboard(player);
-    assert.ok(Math.abs(player.vx) < 1e-10);
-    assert.ok(player.vy < 0);
+    assert.ok(player.vx > 0);
+    assert.ok(Math.abs(player.vy) < 1e-10);
 
     player.vx = 0;
     player.vy = 0;
@@ -41,8 +41,8 @@ test('keyboard movement remains absolute with a valid lock', () => {
     player.y = 100;
     player.beginAimLock({ x: 200, y: 100, radius: 10 });
     updateKeyboard(player, { mouse: { m2Held: true } });
-    assert.ok(Math.abs(player.vx) < 1e-10);
-    assert.ok(player.vy < 0);
+    assert.ok(player.vx > 0);
+    assert.ok(Math.abs(player.vy) < 1e-10);
 
     player.vx = 0;
     player.vy = 0;
@@ -50,32 +50,32 @@ test('keyboard movement remains absolute with a valid lock', () => {
     player.y = 100;
     updateKeyboard(player, { mouse: { m2Released: true } });
     assert.equal(player.aimLockActive, false);
-    assert.ok(Math.abs(player.vx) < 1e-10);
-    assert.ok(player.vy < 0);
+    assert.ok(player.vx > 0);
+    assert.ok(Math.abs(player.vy) < 1e-10);
 });
 
-test('invalid and failed mouse locks remain absolute', () => {
+test('invalid and failed mouse locks retain aim-relative movement', () => {
     const invalidated = new Player(100, 100);
     invalidated.beginAimLock({ x: 200, y: 100, radius: 10 });
     updateKeyboard(invalidated, { mouse: { m2Held: true }, targetIsValid: () => false });
     assert.equal(invalidated.aimLockActive, false);
-    assert.ok(Math.abs(invalidated.vx) < 1e-10);
-    assert.ok(invalidated.vy < 0);
+    assert.ok(invalidated.vx > 0);
+    assert.ok(Math.abs(invalidated.vy) < 1e-10);
 
     const failed = new Player(100, 100);
     updateKeyboard(failed, { mouse: { m2Held: true } });
     assert.equal(failed.aimLockActive, false);
-    assert.ok(Math.abs(failed.vx) < 1e-10);
-    assert.ok(failed.vy < 0);
+    assert.ok(failed.vx > 0);
+    assert.ok(Math.abs(failed.vy) < 1e-10);
 });
 
-test('controller movement remains absolute with a valid lock', () => {
+test('controller movement remains aim-relative with a valid lock', () => {
     const player = new Player(100, 100);
     const pad = gamepadInput();
 
     updateController(player, pad);
-    assert.ok(Math.abs(player.vx) < 1e-10);
-    assert.ok(player.vy < 0);
+    assert.ok(player.vx > 0);
+    assert.ok(Math.abs(player.vy) < 1e-10);
 
     player.vx = 0;
     player.vy = 0;
@@ -83,8 +83,8 @@ test('controller movement remains absolute with a valid lock', () => {
     player.y = 100;
     player.beginAimLock({ x: 200, y: 100, radius: 10 });
     updateController(player, pad);
-    assert.ok(Math.abs(player.vx) < 1e-10);
-    assert.ok(player.vy < 0);
+    assert.ok(player.vx > 0);
+    assert.ok(Math.abs(player.vy) < 1e-10);
 
     player.vx = 0;
     player.vy = 0;
@@ -92,19 +92,19 @@ test('controller movement remains absolute with a valid lock', () => {
     player.y = 100;
     player.clearAimLock();
     updateController(player, pad);
-    assert.ok(Math.abs(player.vx) < 1e-10);
-    assert.ok(player.vy < 0);
+    assert.ok(player.vx > 0);
+    assert.ok(Math.abs(player.vy) < 1e-10);
 });
 
-test('target locking does not change movement axes or NPC steering', () => {
+test('target locking rotates player movement while preserving NPC steering', () => {
     const unlocked = new Player(100, 100);
     const locked = new Player(100, 100);
     locked.beginAimLock({ x: 200, y: 100, radius: 10 });
     updateKeyboard(unlocked);
     updateKeyboard(locked, { mouse: { m2Held: true } });
-    assert.ok(unlocked.vy < 0);
-    assert.ok(Math.abs(locked.vx) < 1e-10);
-    assert.ok(locked.vy < 0);
+    assert.ok(unlocked.vx > 0);
+    assert.ok(locked.vx > 0);
+    assert.ok(Math.abs(locked.vy) < 1e-10);
 
     const npc = new Player(100, 100, 3);
     npc.isNPC = true;
@@ -133,15 +133,15 @@ test('LT hysteresis consumes one attempt until release', () => {
     assert.equal(player.updateControllerAimLockTrigger(0.65, 0.65, 0.25), true);
 });
 
-test('failed LT acquisition and held LT after invalidation stay absolute without reacquiring', () => {
+test('failed LT acquisition and held LT after invalidation stay aim-relative without reacquiring', () => {
     const player = new Player(100, 100);
     const pad = gamepadInput();
 
     assert.equal(player.updateControllerAimLockTrigger(0.7, 0.65, 0.25), true);
     updateController(player, pad);
     assert.equal(player.aimLockActive, false);
-    assert.ok(Math.abs(player.vx) < 1e-10);
-    assert.ok(player.vy < 0);
+    assert.ok(player.vx > 0);
+    assert.ok(Math.abs(player.vy) < 1e-10);
     assert.equal(player.updateControllerAimLockTrigger(1, 0.65, 0.25), false);
 
     player.vx = 0;
@@ -151,8 +151,8 @@ test('failed LT acquisition and held LT after invalidation stay absolute without
     player.beginAimLock({ x: 200, y: 100, radius: 10 });
     updateController(player, pad, () => false);
     assert.equal(player.aimLockActive, false);
-    assert.ok(Math.abs(player.vx) < 1e-10);
-    assert.ok(player.vy < 0);
+    assert.ok(player.vx > 0);
+    assert.ok(Math.abs(player.vy) < 1e-10);
     assert.equal(player.updateControllerAimLockTrigger(1, 0.65, 0.25), false);
 });
 

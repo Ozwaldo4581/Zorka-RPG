@@ -125,7 +125,7 @@ test('disabled transformations enforce Earthling without consuming score or gran
     assert.match(player.name, /^EARTHLING/);
 });
 
-test('Projectile upgrades extend supported bursts without changing each round pattern', () => {
+test('Projectile upgrades extend clip capacity without changing each round pattern or cadence', () => {
     const player = new Player(0, 0);
     for (const gun of ['Normal', 'Antigun', 'Double']) {
         player.activeGun = gun;
@@ -133,7 +133,8 @@ test('Projectile upgrades extend supported bursts without changing each round pa
             player.projectileUpgradeCount = upgrades;
             const base = gun === 'Normal' ? 1 : 2;
             assert.equal(player.getGunProjectiles(0, 0, 0).length, base, `${gun} pattern at ${upgrades}`);
-            assert.equal(player.getBurstRoundCount(), 3 + upgrades, `${gun} burst at ${upgrades}`);
+            assert.equal(player.getBurstRoundCount(), 3, `${gun} cadence at ${upgrades}`);
+            assert.equal(player.getStandardProjectileCapacity(), 12 + upgrades * 2);
         }
     }
     player.projectileUpgradeCount = 5;
@@ -154,7 +155,7 @@ test('Earthling Capsule 3 and the Martian base weapon share one laser definition
     martian.projectileUpgradeCount = 4;
 
     assert.deepEqual(earthling.resolveBaseProjectile(), martian.resolveBaseProjectile());
-    assert.equal(martian.resolveBaseProjectile().quantity, 7);
+    assert.equal(martian.resolveBaseProjectile().quantity, 3);
     assert.equal(martian.getGunProjectiles(0, 0, 0)[0].isLaser, true);
 });
 
