@@ -56,7 +56,7 @@ test('standalone level panel no longer draws or reserves space for a shield numb
     assert.equal(ctx.fills[0].width, 100);
 });
 
-test('standard projectile audio plays once for an accepted burst and not for its secondary rounds', () => {
+test('standard projectile audio follows accepted continuous-fire cadence', () => {
     const player = new Player(0, 0);
     player.spawnImmunityTimer = 0;
     const sounds = [];
@@ -65,15 +65,12 @@ test('standard projectile audio plays once for an accepted burst and not for its
         players: [player], projectiles: [],
         addProjectile: Game.prototype.addProjectile,
         getActiveCameras: () => [],
+        getWorldRules: () => ({ wrap: true }),
         audio: { playSpatial(name) { sounds.push(name); } }
     };
     Game.prototype.handleFire.call(game, player.id);
-    Game.prototype.handleFire.call(game, player.id, true);
-    Game.prototype.handleFire.call(game, player.id, true);
-    assert.deepEqual(sounds, ['laser_fire']);
-
     Game.prototype.handleFire.call(game, player.id);
-    assert.deepEqual(sounds, ['laser_fire'], 'cooldown-blocked fire stays silent');
+    assert.deepEqual(sounds, ['laser_fire'], 'cooldown rejects same-frame repeats');
     player.fireCooldown = 0;
     Game.prototype.handleFire.call(game, player.id);
     assert.deepEqual(sounds, ['laser_fire', 'laser_fire']);

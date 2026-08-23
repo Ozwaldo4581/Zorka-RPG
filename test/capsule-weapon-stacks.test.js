@@ -66,7 +66,6 @@ test('Orb stacks to three centered streams, shares projectile scaling, and clear
     const initialShots = player.fire();
     assert.equal(initialShots.length, MAX_STACKABLE_WEAPON_STREAMS);
     assert.equal(player.fireCooldown, 0.75);
-    assert.equal(player.burstCount, player.resolveBaseProjectile().quantity - 1);
     assert.equal(player.radius, originalRadius);
     assert.equal(player.isCyborg, false);
     player.powerUpCapsules = 4;

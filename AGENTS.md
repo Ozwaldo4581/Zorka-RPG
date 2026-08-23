@@ -12,8 +12,10 @@ The standard wrapped arena is a **17280 × 9720** world: a 9 × 9 grid of 1920 �
 
 Current playable game modes are:
 
-- **Local PvP Arena** — local/split-screen play with up to eight ships.
-- **Arcade Mode** — a one-life progression challenge with escalating NPC waves.
+- **Local PvP Arena** — local/split-screen play with up to eight ships in the wrapped world.
+- **Arcade Mode** — a one-life progression challenge in the four-wall bounded world.
+
+The solo Arena and Adventure graphics are preserved as noninteractive menu artwork; neither is a runtime mode.
 
 Baseline desktop controls:
 
@@ -43,7 +45,7 @@ Keep these familiar asset locations stable unless asset migration is explicitly 
 - UI, rendering, camera, and audio must not own combat, progression, room membership, or match truth.
 - Do not perform large refactors without explaining the concrete need and asking first.
 - Preserve the shared `Player`, `Projectile`, hazard, collision-result, reward, and input contracts across modes.
-- Arcade and Local PvP retain standard wrapped-world behavior.
+- Local PvP retains standard wrapped-world behavior. Arcade uses the same dimensions with four physical outer walls and direct, non-wrapped geometry.
 - Adventure is not a runtime mode; preserve only its static menu artwork while shared RPG mechanics belong to Player, Projectile, Game, and physics seams.
 - Online multiplayer is out of scope. `network_manager.js` is legacy and `Game.network` is intentionally `null` in the active build.
 - For bugs involving hits, destruction, rewards, HP, shields, death, respawn, room transfer, or timing, inspect the owning gameplay path before patching HUD/menu/audio behavior.
@@ -72,7 +74,8 @@ Keep these familiar asset locations stable unless asset migration is explicitly 
 - Movement is aim-relative. Human movement coefficient is 1.0 and NPC movement coefficient is 0.8.
 - Player owns its clip: Standard begins at 12, Projectile upgrades add 2, Laser derives at 50%, Orb derives at 33.333% using nearest-whole normalization, and empty reload takes 7 seconds.
 - Player owns manual missile cooldown. Keyboard/mouse Player 1 fires with E; tiers use 13/9/5 seconds. No automatic missile firing or new controller binding.
-- Ordinary projectiles use only their owner's valid live lock at 0.3 missile homing strength.
+- Ordinary projectiles use only their owner's valid live lock at 0.7 missile homing strength.
+- Held primary fire discharges the clip at the established cadence without burst grouping.
 - Adventure was the migration authority for this fork but is not playable and must not own shared runtime behavior.
 
 ## 1) Workflow Expectations
@@ -172,13 +175,13 @@ UI may dispatch intent and read state; it must not grant rewards, resolve damage
 
 ### 2.5 Modes
 
-#### Solo Arena and Local PvP
+#### Local PvP
 
-Use the standard wrapped world, shared arena populations, shared damage/progression systems, and normal respawn flow. Transformations are enabled.
+Uses the standard wrapped world, shared arena populations, shared damage/progression systems, and normal respawn flow. Transformations are enabled. Solo Arena is unsupported; its menu graphic is presentation-only.
 
 #### Arcade Mode
 
-- Separate `ARCADE` game state.
+- Separate `ARCADE` game state with exactly four immutable outer walls and no wrapping.
 - One human player with a random palette color.
 - Transformations are disabled.
 - Hardcore progression reset is always active.

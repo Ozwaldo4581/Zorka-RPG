@@ -2,32 +2,34 @@
 
 ## Active routes
 
-`main.js` → `new Game()` → splash → main menu → Arcade configuration / Local PvP configuration / Options → standard wrapped gameplay.
+`main.js` → `new Game()` → splash → main menu → Arcade configuration / Local PvP configuration / Options.
 
-The preserved Adventure menu graphic is presentation-only and is deliberately excluded from mouse, keyboard, and gamepad interaction. Adventure is not an active route; it was the migration source used to establish the shared RPG contracts.
+The Adventure and Arena graphics remain in the menu layout as disabled, unfocusable, noninteractive artwork. Neither has a click, keyboard/gamepad-confirm, restart, or supported runtime route. Local PvP is a distinct retained entry and continues using the shared setup panel.
 
 ## Input to gameplay
 
-- Keyboard/mouse or an assigned controller supplies an aim vector and local movement vector to `Player.update()`.
-- `Player.getDirectionalThrust()` rotates movement into that player's aim frame and applies Speed progression plus the human (`1.0`) or NPC (`0.8`) coefficient.
-- Held primary-fire intent is coordinated by `Game.handleFire()`. `Player.fire()` checks and consumes its authoritative clip, retains partial ammunition, and starts a 7-second reload only at zero.
-- **E** dispatches manual missile intent through `Game.handleMissileFire()` to `Player.fireMissile()`. Player owns unlock and cooldown truth; Game only inserts accepted projectiles.
-- Existing controller face buttons remain capsule/upgrade intents. There is no newly invented controller missile binding.
+- Local input supplies aim and movement intent to `Player.update()`.
+- `Player.getDirectionalThrust()` applies aim-relative movement and the human (`1.0`) or NPC (`0.8`) coefficient.
+- Held primary-fire intent flows through `Game.handleFire()` to `Player.fire()`, which accepts one shot at the established cooldown, consumes one clip round, preserves partial clips, and starts the 7-second reload at zero.
+- NPC combat decisions set the same sustained `shouldFire` intent; they do not own a second burst or ammunition implementation.
+- **E** flows through `Game.handleMissileFire()` to the Player-owned manual missile cooldown.
 
-## Combat flow
+## Combat and topology flow
 
-`Player.fire()` → `Projectile` instances → `Game` canonical projectile collection → `Projectile.update()` → `Game.checkCollisions()` → authoritative damage/reward/death handling.
+`Player.fire()` → `Projectile` → `Game.projectiles` → `Projectile.update()` → world-boundary resolution → `Game.checkCollisions()` → damage/reward/death outcomes.
 
-Ordinary projectiles read only `projectile.owner.lockedAimTarget` live. A valid target enables a turn rate of `MISSILE_HOMING_TURN_RATE × 0.3`; otherwise flight remains ballistic. Missiles retain their owner-lock preference and missile-owned fallback behavior.
+Ordinary projectiles read only `projectile.owner.lockedAimTarget`. A valid owner lock enables `MISSILE_HOMING_TURN_RATE × 0.7`; otherwise travel is ballistic. Missiles retain reference strength `1.0` and their existing owner-lock-first fallback behavior.
+
+For Arcade, `Game.getWorldRules()` → `ARCADE_BOUNDED_WORLD` → stateless `physics.js` swept/contact helpers → category response (ship slide, body reflection, projectile removal, missile detonation). Camera, aim lock, homing, collision distance, blast distance, minimap coordinates, and spatial audio use direct geometry. Local PvP selects wrapped geometry through the same world-rule seam.
 
 ## State boundaries
 
 | State | Authoritative owner | Consumers |
 | --- | --- | --- |
 | Position, velocity, aim, movement coefficient | `Player` | `Game`, camera, HUD/audio |
-| Clip capacity, rounds, reload | `Player` | `Game`, HUD |
+| Clip capacity, rounds, reload, fire cooldown | `Player` | `Game`, HUD |
 | Missile unlock/tier/cooldown | `Player` | `Game`, HUD |
 | Aim lock | firing `Player` | `Projectile`, HUD |
-| Projectile flight flags/target fallback | `Projectile` | `Game`, renderer |
+| Arcade walls/topology | `Game` + immutable world definition | entities, camera, audio, targeting |
 | Collections, damage, rewards, waves, respawn | `Game` | HUD/audio/rendering |
-| Arena options | `Game` | spawn/configuration consumers |
+| Arena options | `Game` | Arcade and Local PvP spawn/configuration consumers |

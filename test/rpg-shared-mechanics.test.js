@@ -75,7 +75,7 @@ test('manual missiles require an unlock and own independent tier cooldowns', () 
     assert.equal(first.fireMissile().length, 1);
 });
 
-test('ordinary projectiles use only their live owner lock at 0.3 missile strength', () => {
+test('ordinary projectiles use only their live owner lock at 0.7 missile strength', () => {
     const owner = new Player(0, 0);
     const otherOwner = new Player(0, 0, 2);
     const target = new Player(100, 0, 3);
@@ -88,6 +88,20 @@ test('ordinary projectiles use only their live owner lock at 0.3 missile strengt
     owner.lockedAimTarget = target;
     projectile.update(0.1, [], [owner, otherOwner, target]);
     assert.ok(projectile.vx > 0);
-    assert.equal(STANDARD_PROJECTILE_HOMING_FACTOR, 0.3);
+    assert.equal(STANDARD_PROJECTILE_HOMING_FACTOR, 0.7);
     assert.equal(MISSILE_HOMING_TURN_RATE, 2.7);
+});
+
+test('held primary-fire attempts can discharge a complete clip at the established cadence', () => {
+    const player = new Player(0, 0);
+    player.spawnImmunityTimer = 0;
+    const capacity = player.getClipCapacity();
+    let accepted = 0;
+    while (player.clipRounds > 0) {
+        if (player.fire()) accepted++;
+        player.fireCooldown = 0;
+    }
+    assert.equal(accepted, capacity);
+    assert.equal(player.clipRounds, 0);
+    assert.equal(player.clipReloadTimer, CLIP_RELOAD_DURATION);
 });

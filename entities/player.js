@@ -3,7 +3,6 @@ import { Projectile } from './projectile.js';
 import { DESIGN_WIDTH, DESIGN_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT } from '../world_config.js';
 
 const BASE_GUN_COOLDOWN = 0.75;
-const BURST_INTERVAL = 0.05;
 const BASE_PROJECTILE_SPEED = 1200;
 const NORMAL_SHIP_SPEED_CAP = 800;
 export const HUMAN_MOVEMENT_COEFFICIENT = 1;
@@ -92,11 +91,6 @@ export class Player {
         this.clipReloadTimer = 0;
         this.martianParallelGuns = 1; // Base is 1 for Martian
         this.bonusSpeed = 0; // For Event Horizon Horror
-        
-        // Burst fire system
-        this.burstCount = 0;
-        this.burstTimer = 0;
-        this.shouldTriggerBurstFire = false;
         
         // NPC specific
         this.npcTarget = null;
@@ -311,7 +305,6 @@ export class Player {
     }
 
     resetTransientLifeState() {
-        this.cancelBurstFire();
         this.resetControllerAimLock(true);
         this.isDead = false;
         this.respawnTimer = 0;
@@ -341,7 +334,6 @@ export class Player {
     }
 
     startExperimentalRespawnPhase(x = this.x, y = this.y) {
-        this.cancelBurstFire();
         this.experimentalRespawnPhaseTimer = this.experimentalRespawnPhaseDuration;
         this.experimentalRespawnAnchorX = x;
         this.experimentalRespawnAnchorY = y;
@@ -402,16 +394,6 @@ export class Player {
         return true;
     }
 
-    getBurstRoundCount() {
-        return this.resolveBaseProjectile().quantity;
-    }
-
-    cancelBurstFire() {
-        this.burstCount = 0;
-        this.burstTimer = 0;
-        this.shouldTriggerBurstFire = false;
-    }
-
     resetLevelProgress() {
         const automaticShieldCapacity = this.isNPC ? 0 : this.level;
         this.totalXP = 0;
@@ -430,7 +412,6 @@ export class Player {
         this.shieldCharges = Math.min(this.shieldCharges, this.maxShieldCharges);
         this.hasForcefield = this.shieldCharges > 0;
         this.shieldRechargeTimer = 0;
-        this.cancelBurstFire();
     }
 
     clearAimLock() {
@@ -563,7 +544,6 @@ export class Player {
         this.clipRounds--;
         if (this.clipRounds === 0) {
             this.clipReloadTimer = CLIP_RELOAD_DURATION;
-            this.cancelBurstFire();
         }
         return true;
     }
@@ -660,18 +640,6 @@ export class Player {
         // Handle Ghost Movement
         this.updateGhosts(dt, worldRules);
 
-        // Handle Burst Fire Logic
-        if (translationLocked) {
-            this.cancelBurstFire();
-        } else if (this.burstCount > 0) {
-            this.burstTimer -= dt;
-            if (this.burstTimer <= 0) {
-                this.burstCount--;
-                this.burstTimer = 0.05; 
-                this.shouldTriggerBurstFire = true; 
-            }
-        }
-
         let fx = 0;
         let fy = 0;
         this.shouldFire = false;
@@ -712,7 +680,9 @@ export class Player {
 
                 const aimTarget = this.resolveAimLock(isAimTargetValid);
                 if (aimTarget) {
-                    const delta = nearestWrappedDisplacement(this.x, this.y, aimTarget.x, aimTarget.y);
+                    const delta = worldRules?.wrap === false
+                        ? { x: aimTarget.x - this.x, y: aimTarget.y - this.y }
+                        : nearestWrappedDisplacement(this.x, this.y, aimTarget.x, aimTarget.y);
                     if (Math.hypot(delta.x, delta.y) > 2) this.rotation = Math.atan2(delta.y, delta.x) + Math.PI / 2;
                 } else {
                     const rsX = gp.axes[2];
@@ -745,7 +715,9 @@ export class Player {
 
                 const aimTarget = this.resolveAimLock(isAimTargetValid);
                 if (aimTarget) {
-                    const delta = nearestWrappedDisplacement(this.x, this.y, aimTarget.x, aimTarget.y);
+                    const delta = worldRules?.wrap === false
+                        ? { x: aimTarget.x - this.x, y: aimTarget.y - this.y }
+                        : nearestWrappedDisplacement(this.x, this.y, aimTarget.x, aimTarget.y);
                     if (Math.hypot(delta.x, delta.y) > 2) {
                         this.rotation = Math.atan2(delta.y, delta.x) + Math.PI / 2;
                     }
@@ -792,7 +764,9 @@ export class Player {
 
                 const aimTarget = this.resolveAimLock(isAimTargetValid);
                 if (aimTarget) {
-                    const delta = nearestWrappedDisplacement(this.x, this.y, aimTarget.x, aimTarget.y);
+                    const delta = worldRules?.wrap === false
+                        ? { x: aimTarget.x - this.x, y: aimTarget.y - this.y }
+                        : nearestWrappedDisplacement(this.x, this.y, aimTarget.x, aimTarget.y);
                     if (Math.hypot(delta.x, delta.y) > 2) this.rotation = Math.atan2(delta.y, delta.x) + Math.PI / 2;
                 } else {
                     const rsX = gp.axes[2];
@@ -1125,7 +1099,6 @@ export class Player {
         this.npcBehaviorTimer -= dt;
         if (this.isExperimentalFleeingNPC) {
             this.shouldFire = false;
-            this.shouldTriggerBurstFire = false;
         }
         if (this.isExperimentalFleeingNPC && this.experimentalSpecterRecovering) {
             const target = this.experimentalSpecterRecoveryTarget;
@@ -1409,7 +1382,6 @@ export class Player {
 
         if (this.isExperimentalFleeingNPC) {
             this.shouldFire = false;
-            this.shouldTriggerBurstFire = false;
         }
 
         setForce({ x: fx, y: fy });
@@ -1430,7 +1402,7 @@ export class Player {
             if (other === this || other.isDead || other.isEliminated) continue;
             if (isTargetCandidate && !isTargetCandidate(other)) continue;
             if (worldRules?.usesRooms && other.roomId !== this.roomId) continue;
-            const delta = worldRules?.usesRooms
+            const delta = worldRules?.wrap === false
                 ? { x: other.x - this.x, y: other.y - this.y }
                 : nearestWrappedDisplacement(this.x, this.y, other.x, other.y);
             const distance = Math.hypot(delta.x, delta.y);
@@ -1546,7 +1518,6 @@ export class Player {
         this.weaponStreamCounts = { Laser: 0, Antigun: 0, Double: 0, Orb: 0 };
         this.activeGun = weapon;
         this.weaponStreamCounts[weapon] = switched ? 1 : currentRank + 1;
-        this.cancelBurstFire();
         this.resetClip();
         return {
             applied: true,
@@ -1681,7 +1652,6 @@ export class Player {
     clearExperimentalRoomCapsuleBonuses() {
         this.activeGun = 'Normal';
         this.weaponStreamCounts = { Laser: 0, Antigun: 0, Double: 0, Orb: 0 };
-        this.cancelBurstFire();
         this.hasMissile = false;
         this.missileLevel = 0;
         this.missileCooldown = 0;
@@ -1691,26 +1661,18 @@ export class Player {
         this.history = [];
     }
 
-    fire(isBurstShot = false) {
+    fire() {
         if (this.isEventHorizon) return null; // Event Horizon Horror does not shoot projectiles
         if (this.spawnImmunityTimer > 0 || this.isWeaponLocked()) return null; // Cannot shoot during immunity
 
-        if ((this.fireCooldown <= 0 || isBurstShot) && this.consumeClipRound()) {
+        if (this.fireCooldown <= 0 && this.consumeClipRound()) {
             // Main weapon logic
             const projectiles = [];
             
-            // Check if this weapon supports burst
             const baseProjectile = this.resolveBaseProjectile();
             const hasOrbWeapon = this.activeGun === 'Orb' && (this.weaponStreamCounts?.Orb || 0) > 0;
-            const isBurstWeapon = hasOrbWeapon || (!this.isCyborg && !this.isDimensionX);
-
-            if (!isBurstShot) {
-                this.fireCooldown = isBurstWeapon ? BASE_GUN_COOLDOWN : 0.35;
-                if (isBurstWeapon) {
-                    this.burstCount = baseProjectile.quantity - 1;
-                    this.burstTimer = BURST_INTERVAL;
-                }
-            }
+            const usesStandardCadence = hasOrbWeapon || (!this.isCyborg && !this.isDimensionX);
+            this.fireCooldown = usesStandardCadence ? BASE_GUN_COOLDOWN : 0.35;
 
             // Main Gun Fire
             const mainProjs = this.getGunProjectiles(this.x, this.y, this.rotation, baseProjectile);
