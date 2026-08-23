@@ -4,6 +4,10 @@ import { createExperimentalAreas, createExperimentalDoors } from '../world/exper
 import { EXPERIMENTAL_ROOM_WIDTH, EXPERIMENTAL_ROOM_HEIGHT, Game, GAME_MODE } from '../game.js';
 import { Player } from '../entities/player.js';
 import { HUD } from '../ui/hud.js';
+import { circleThickSegmentContact, sweptCircleSegmentIntersection } from '../physics.js';
+
+const perimeterWalls = room => room.walls.filter(wall => !wall.id.includes('-spawn-ring-'));
+const ringWalls = (room, ringId) => room.walls.filter(wall => wall.id.includes(`-spawn-ring-${ringId}-`));
 
 test('Adventure topology is Sector 1 with four complete perimeter walls', () => {
   const areas = createExperimentalAreas(EXPERIMENTAL_ROOM_WIDTH, EXPERIMENTAL_ROOM_HEIGHT);
@@ -12,7 +16,8 @@ test('Adventure topology is Sector 1 with four complete perimeter walls', () => 
   assert.deepEqual([room.roomNumber, room.npcCount, room.npcLevel], [1, 1, 1]);
   assert.deepEqual(room.connectedAreaIds, []);
   assert.deepEqual(room.entrances, []);
-  assert.equal(room.walls.length, 4);
+  assert.equal(perimeterWalls(room).length, 4);
+  assert.ok(room.walls.length > 4, 'spawn arcs join the authoritative wall collection');
   assert.equal(createExperimentalDoors(areas).length, 0);
   assert.deepEqual(room.bounds, { left: 0, top: 0, right: EXPERIMENTAL_ROOM_WIDTH, bottom: EXPERIMENTAL_ROOM_HEIGHT });
 });
@@ -27,8 +32,66 @@ test('Adventure spawn structure is immutable geometry derived from the initial s
   assert.ok(structure.rings.every(ring => ring.center === room.initialSpawn && Object.isFrozen(ring)));
   assert.ok(structure.rings[1].radius > structure.rings[0].radius);
   assert.equal(structure.rings[0].gapCenter, Math.PI / 2);
-  assert.equal(structure.rings[1].gapCenter, 0);
-  assert.equal(room.walls.length, 4, 'decorative rings must not enter collision walls');
+  assert.equal(structure.rings[1].gapCenter - structure.rings[0].gapCenter, Math.PI);
+  assert.equal(structure.rings[1].gapSize, structure.rings[0].gapSize * 0.5);
+  assert.deepEqual(structure.rings.map(ring => ring.radius), [650, 1000]);
+});
+
+test('Adventure spawn arcs derive connected two-sided walls with empty openings', () => {
+  const [room] = createExperimentalAreas(EXPERIMENTAL_ROOM_WIDTH, EXPERIMENTAL_ROOM_HEIGHT);
+  for (const ring of room.spawnStructure.rings) {
+    const walls = ringWalls(room, ring.id);
+    assert.ok(walls.length > 0);
+    assert.ok(walls.every(wall => wall.isTwoSided === true));
+    assert.ok(walls.every(wall => wall.id.startsWith(`${room.id}-spawn-ring-${ring.id}-`)));
+    for (let index = 1; index < walls.length; index++) {
+      assert.deepEqual(walls[index].start, walls[index - 1].end, 'solid arc chords meet exactly');
+    }
+    const expectedStart = {
+      x: ring.center.x + Math.cos(ring.startAngle) * ring.radius,
+      y: ring.center.y + Math.sin(ring.startAngle) * ring.radius
+    };
+    const expectedEnd = {
+      x: ring.center.x + Math.cos(ring.endAngle) * ring.radius,
+      y: ring.center.y + Math.sin(ring.endAngle) * ring.radius
+    };
+    assert.deepEqual(walls[0].start, expectedStart);
+    assert.deepEqual(walls.at(-1).end, expectedEnd);
+    const gapPoint = {
+      x: ring.center.x + Math.cos(ring.gapCenter) * ring.radius,
+      y: ring.center.y + Math.sin(ring.gapCenter) * ring.radius,
+      radius: 1
+    };
+    assert.ok(walls.every(wall => !circleThickSegmentContact(gapPoint, wall, room.wallCollisionThickness)));
+  }
+});
+
+test('spawn-ring standard wall geometry blocks solid approaches but leaves both gaps traversable', () => {
+  const [room] = createExperimentalAreas(EXPERIMENTAL_ROOM_WIDTH, EXPERIMENTAL_ROOM_HEIGHT);
+  for (const ring of room.spawnStructure.rings) {
+    const walls = ringWalls(room, ring.id);
+    const solidAngle = ring.gapCenter + Math.PI;
+    const radialPoint = distance => ({
+      x: ring.center.x + Math.cos(solidAngle) * distance,
+      y: ring.center.y + Math.sin(solidAngle) * distance
+    });
+    const insideHit = walls.some(wall => sweptCircleSegmentIntersection(
+      radialPoint(ring.radius - 150), radialPoint(ring.radius + 150), 25, wall, room.wallCollisionThickness
+    ));
+    const outsideHit = walls.some(wall => sweptCircleSegmentIntersection(
+      radialPoint(ring.radius + 150), radialPoint(ring.radius - 150), 25, wall, room.wallCollisionThickness
+    ));
+    assert.equal(insideHit, true);
+    assert.equal(outsideHit, true);
+
+    const gapPoint = distance => ({
+      x: ring.center.x + Math.cos(ring.gapCenter) * distance,
+      y: ring.center.y + Math.sin(ring.gapCenter) * distance
+    });
+    assert.equal(walls.some(wall => sweptCircleSegmentIntersection(
+      gapPoint(ring.radius - 150), gapPoint(ring.radius + 150), 25, wall, room.wallCollisionThickness
+    )), false);
+  }
 });
 
 test('Adventure world and minimap render the same spawn-ring descriptor', () => {
