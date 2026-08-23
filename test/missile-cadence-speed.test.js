@@ -33,11 +33,11 @@ test('Missile capsules add one Player-owned round through the capacity cap', () 
     );
 });
 
-test('Missile clip consumes rounds at an independent Laser-equal interval and reloads empty in twelve seconds', () => {
+test('Missile clip consumes rounds at an independent twice-Laser-rate interval and reloads empty in twelve seconds', () => {
     const player = new Player(0, 0);
     player.spawnImmunityTimer = 0;
     for (let i = 0; i < 4; i++) assert.equal(selectMissile(player), true);
-    assert.equal(MISSILE_SHOT_INTERVAL, LASER_SHOT_INTERVAL);
+    assert.equal(MISSILE_SHOT_INTERVAL, LASER_SHOT_INTERVAL / 2);
     for (let ammo = 3; ammo >= 0; ammo--) {
         assert.equal(player.fireMissile().filter(shot => shot.isMissile).length, 1);
         assert.equal(player.missileAmmo, ammo);
