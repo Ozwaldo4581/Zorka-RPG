@@ -6,7 +6,7 @@ export class SpaceDebris {
     constructor(x, y) {
         this.x = x;
         this.y = y;
-        this.radius = 45; // Medium asteroid size
+        this.radius = 36; // Collectible debris is 80% of its former 45-unit size.
         this.maxHits = 2;
         this.hits = 0;
         this.isDestroyed = false;

@@ -48,6 +48,7 @@ export const PLAYER_COLORS = Object.freeze([
 ]);
 export const DEFAULT_P1_CONTROL_MODE = 'KEYBOARD';
 export const MISSILE_DAMAGE = 3;
+export const RPG_DEBRIS_DROP_CHANCE = 0.33;
 
 export function getExperimentalNPCCapsuleBudget(npcLevel, roomNumber) {
     return Math.max(1, Math.floor(Number(npcLevel) || 1))
@@ -198,7 +199,17 @@ export function getExperimentalPopulationTargets(asteroidLevel, debrisLevel, sat
 export function getExperimentalRoomPopulationTargets(roomNumber, asteroidLevel, debrisLevel, satelliteLevel) {
     const targets = getExperimentalPopulationTargets(asteroidLevel, debrisLevel, satelliteLevel);
     const asteroidMultiplier = roomNumber === 7 ? 1.2 : roomNumber === 8 ? 1.4 : 1;
-    return { ...targets, asteroids: Math.round(targets.asteroids * asteroidMultiplier) };
+    return { ...targets, debris: 0, asteroids: Math.round(targets.asteroids * asteroidMultiplier) };
+}
+
+export function getRpgAsteroidClusters(bounds) {
+    const width = bounds.right - bounds.left;
+    const height = bounds.bottom - bounds.top;
+    const common = { radiusX: [width * 0.1, width * 0.22], radiusY: [height * 0.1, height * 0.22] };
+    return [
+        { id: 'bottom-left', centerX: bounds.left + width * 0.25, centerY: bounds.top + height * 0.75, ...common },
+        { id: 'top-right', centerX: bounds.left + width * 0.75, centerY: bounds.top + height * 0.25, ...common }
+    ];
 }
 
 export function getShieldRechargeDelay(optionValue) {
@@ -730,15 +741,19 @@ export class Game {
         }
     }
 
-    spawnSpaceDebris(roomId = null) {
+    spawnSpaceDebris(roomId = null, options = {}) {
         const experimentalRoomId = roomId || this.experimentalRooms?.[0]?.id;
-        const spawn = this.gameState === GAME_MODE.EXPERIMENTAL
-            ? this.findExperimentalSpawn(45, this.players, experimentalRoomId)
+        const hasPosition = Number.isFinite(options.x) && Number.isFinite(options.y);
+        const spawn = hasPosition ? options : this.gameState === GAME_MODE.EXPERIMENTAL
+            ? this.findExperimentalSpawn(36, this.players, experimentalRoomId)
             : { x: Math.random() * WORLD_WIDTH, y: Math.random() * WORLD_HEIGHT };
         const debris = new SpaceDebris(spawn.x, spawn.y);
+        if (Number.isFinite(options.vx)) debris.vx = options.vx;
+        if (Number.isFinite(options.vy)) debris.vy = options.vy;
         if (this.gameState === GAME_MODE.EXPERIMENTAL) debris.roomId = experimentalRoomId;
         this.hazards.push(debris);
         Game.prototype.indexExperimentalEntity.call(this, 'hazards', debris);
+        return debris;
     }
 
     spawnSatellite(roomId = null) {
@@ -752,7 +767,7 @@ export class Game {
         Game.prototype.indexExperimentalEntity.call(this, 'hazards', satellite);
     }
 
-    spawnAsteroid(size, x, y, roomId = null) {
+    spawnAsteroid(size, x, y, roomId = null, orbitConfig = null) {
         let attempts = 0;
         const maxAttempts = 50;
         const experimentalRoomId = roomId || this.experimentalRooms?.[0]?.id;
@@ -782,9 +797,50 @@ export class Game {
         }
         
         const asteroid = new Asteroid(x, y, size);
+        if (orbitConfig && size === 'large') asteroid.configureOrbit(orbitConfig);
         if (this.gameState === GAME_MODE.EXPERIMENTAL) asteroid.roomId = experimentalRoomId;
         this.asteroids.push(asteroid);
         Game.prototype.indexExperimentalEntity.call(this, 'asteroids', asteroid);
+        return asteroid;
+    }
+
+    getRpgAsteroidClusters(roomId = null) {
+        const room = Game.prototype.getExperimentalRoom.call(this, roomId) || this.experimentalRooms?.[0];
+        return room ? getRpgAsteroidClusters(room.bounds) : [];
+    }
+
+    createRpgOrbitConfig(clusterId, roomId = null) {
+        const clusters = Game.prototype.getRpgAsteroidClusters.call(this, roomId);
+        const cluster = clusters.find(candidate => candidate.id === clusterId) || clusters[0];
+        if (!cluster) return null;
+        const between = ([minimum, maximum]) => minimum + Math.random() * (maximum - minimum);
+        const speed = 0.015 + Math.random() * 0.035;
+        return {
+            clusterId: cluster.id,
+            centerX: cluster.centerX,
+            centerY: cluster.centerY,
+            radiusX: between(cluster.radiusX),
+            radiusY: between(cluster.radiusY),
+            phase: Math.random() * Math.PI * 2,
+            angularSpeed: (Math.random() < 0.5 ? -1 : 1) * speed
+        };
+    }
+
+    spawnRpgLargeAsteroid(clusterId, roomId = null) {
+        const orbit = Game.prototype.createRpgOrbitConfig.call(this, clusterId, roomId);
+        return this.spawnAsteroid('large', orbit?.centerX, orbit?.centerY, roomId, orbit);
+    }
+
+    spawnDebrisBurst(x, y, roomId, count = 1) {
+        const spawned = [];
+        for (let index = 0; index < count; index++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 70 + Math.random() * 90;
+            spawned.push(this.spawnSpaceDebris(roomId, {
+                x, y, vx: Math.cos(angle) * speed, vy: Math.sin(angle) * speed
+            }));
+        }
+        return spawned;
     }
 
     bindEvents() {
@@ -2152,8 +2208,10 @@ export class Game {
             const targets = this.experimentalRoomPopulations?.get(populationRoom.id)?.desired
                 || getExperimentalRoomPopulationTargets(populationRoom.roomNumber,
                     this.asteroidDensityLevel, this.debrisDensityLevel, this.satelliteDensityLevel);
-            for (let index = 0; index < targets.asteroids; index++) this.spawnAsteroid('large', undefined, undefined, populationRoom.id);
-            for (let index = 0; index < targets.debris; index++) this.spawnSpaceDebris(populationRoom.id);
+            const clusters = Game.prototype.getRpgAsteroidClusters.call(this, populationRoom.id);
+            for (let index = 0; index < targets.asteroids; index++) {
+                this.spawnRpgLargeAsteroid(clusters[index % clusters.length].id, populationRoom.id);
+            }
             for (let index = 0; index < targets.satellites; index++) this.spawnSatellite(populationRoom.id);
         }
     }
@@ -2903,7 +2961,9 @@ export class Game {
             }
         });
         source('hazards', this.hazards).forEach(hazard => {
-            if ((hazard instanceof SpaceDebris || hazard instanceof Satellite) && !hazard.isDestroyed) add(hazard, 'hazard');
+            if (hazard instanceof Satellite && !hazard.isDestroyed) add(hazard, 'hazard');
+            else if (this.gameState !== GAME_MODE.EXPERIMENTAL
+                && hazard instanceof SpaceDebris && !hazard.isDestroyed) add(hazard, 'hazard');
         });
         source('asteroids', this.asteroids).forEach(asteroid => {
             if (asteroid instanceof Asteroid && !asteroid.isDestroyed) add(asteroid, 'asteroid');
@@ -2922,6 +2982,7 @@ export class Game {
             return this.asteroids.includes(target) && !target.isDestroyed;
         }
         if (target instanceof SpaceDebris || target instanceof Satellite) {
+            if (this.gameState === GAME_MODE.EXPERIMENTAL && target instanceof SpaceDebris) return false;
             return this.hazards.includes(target) && !target.isDestroyed;
         }
         if (target instanceof Projectile) {
@@ -4123,6 +4184,7 @@ export class Game {
 
     hitTarget(target, killer) {
         if (!target || target.isDestroyed || Game.prototype.isCombatSourceLocked.call(this, killer)) return;
+        if (this.gameState === GAME_MODE.EXPERIMENTAL && target.isDebris) return;
         
         target.hits++;
         if (target.hits >= target.maxHits) {
@@ -4143,11 +4205,22 @@ export class Game {
                     
                     // Queue a respawn for a new large asteroid
                     const delay = 12 + Math.random() * 32; // 12 to 44 seconds
+                    const clusterId = target.orbit?.clusterId;
                     Game.prototype.scheduleEnvironmentReplacement.call(this, delay, target.roomId, 'asteroids', () => {
-                        this.spawnAsteroid('large', undefined, undefined, target.roomId);
+                        if (this.gameState === GAME_MODE.EXPERIMENTAL && clusterId) {
+                            this.spawnRpgLargeAsteroid(clusterId, target.roomId);
+                        } else {
+                            this.spawnAsteroid('large', undefined, undefined, target.roomId);
+                        }
                     });
                 } else if (target.size === 'medium') {
-                    for (let i = 0; i < 3; i++) this.spawnAsteroid('small', target.x, target.y, target.roomId);
+                    for (let i = 0; i < 3; i++) {
+                        if (this.gameState === GAME_MODE.EXPERIMENTAL && Math.random() < RPG_DEBRIS_DROP_CHANCE) {
+                            Game.prototype.spawnDebrisBurst.call(this, target.x, target.y, target.roomId, 1);
+                        } else {
+                            this.spawnAsteroid('small', target.x, target.y, target.roomId);
+                        }
+                    }
                 }
 
                 const currentIndex = this.asteroids.indexOf(target);
@@ -4168,9 +4241,14 @@ export class Game {
                 if (target.isSatellite && Game.prototype.shouldSpawnExperimentalReplacement.call(this, target.roomId, 'satellites')) {
                     this.spawnSatellite(target.roomId);
                 }
+                if (target.isSatellite && this.gameState === GAME_MODE.EXPERIMENTAL
+                    && Math.random() < RPG_DEBRIS_DROP_CHANCE) {
+                    const count = 1 + Math.floor(Math.random() * 3);
+                    Game.prototype.spawnDebrisBurst.call(this, target.x, target.y, target.roomId, count);
+                }
                 
                 // If debris, maybe respawn later like asteroids
-                if (target.isDebris) {
+                if (target.isDebris && this.gameState !== GAME_MODE.EXPERIMENTAL) {
                     const delay = 30 + Math.random() * 60;
                     Game.prototype.scheduleEnvironmentReplacement.call(this, delay, target.roomId, 'debris', () => {
                         this.spawnSpaceDebris(target.roomId);
@@ -4532,6 +4610,7 @@ export class Game {
             // Check against Hazards (Space Debris and Satellites)
             collisionContext.hazardIndex.forEachNearby(p, h => {
                 if (!h || h.isDestroyed) return;
+                if (this.gameState === GAME_MODE.EXPERIMENTAL && h.isDebris) return;
                 if (!Game.prototype.areExperimentalEntitiesCoLocated.call(this, p, h)) return;
                 if (checkCollision(p, h)) {
                     if (p.isMissile || p.isSkinnyMissile) {
@@ -4657,6 +4736,15 @@ export class Game {
                 if (!h || h.isDestroyed) continue;
                 if (!Game.prototype.areExperimentalEntitiesCoLocated.call(this, player, h)) continue;
                 if (checkCollision(player, h)) {
+                    if (this.gameState === GAME_MODE.EXPERIMENTAL && h.isDebris) {
+                        if (!Game.prototype.isHumanPlayerEntity.call(this, player)) continue;
+                        player.addScrap(1);
+                        h.isDestroyed = true;
+                        Game.prototype.unindexExperimentalEntity.call(this, 'hazards', h);
+                        const debrisIndex = this.hazards.indexOf(h);
+                        if (debrisIndex !== -1) this.hazards.splice(debrisIndex, 1);
+                        continue;
+                    }
                     this.playerDeath(player, h);
                     break;
                 }
@@ -4762,6 +4850,7 @@ export class Game {
         for (let j = localHazards.length - 1; j >= 0; j--) {
             const h = localHazards[j];
             if (!h || h.isDestroyed) continue;
+            if (this.gameState === GAME_MODE.EXPERIMENTAL && h.isDebris) continue;
             if (!Game.prototype.areExperimentalEntitiesCoLocated.call(this, p, h)) continue;
             const dist = Math.hypot(h.x - p.x, h.y - p.y);
             if (dist < radius + h.radius && !this.isExperimentalBlastBlocked(p, h)) {
@@ -4867,6 +4956,7 @@ export class Game {
         for (let j = localHazards.length - 1; j >= 0; j--) {
             const h = localHazards[j];
             if (!h || h.isDestroyed) continue;
+            if (this.gameState === GAME_MODE.EXPERIMENTAL && h.isDebris) continue;
             if (!Game.prototype.areExperimentalEntitiesCoLocated.call(this, missile, h)) continue;
             const dist = Math.hypot(h.x - missile.x, h.y - missile.y);
             if (dist < radius + h.radius && !this.isExperimentalBlastBlocked(missile, h)) {
