@@ -208,7 +208,7 @@ export class Player {
 
     getScrapMagnetRange() {
         const shipLength = this.radius * 2;
-        return shipLength * 10 * 1.5 * 2;
+        return shipLength * 10;
     }
 
     getScrapMagnetHomingStrength(distance) {
