@@ -33,7 +33,7 @@ test('Wisps do not satisfy ordinary NPC population and expire without reward or 
     const game = {
         gameState: GAME_MODE.EXPERIMENTAL, players: [...ordinary, ...wisps],
         experimentalRooms: [{ id: roomId }],
-        experimentalEncounterStates: new Map([[roomId, { npcCount: 5 }]]),
+        experimentalEncounterStates: new Map([[roomId, { npcLevel: 5 }]]),
         experimentalAreaIndexes: new Map([[roomId, { players: new Set([...ordinary, ...wisps]) }]]),
         spawnOrdinaryExperimentalRoomNPCs(id, placed, count) { this.spawned = count; },
         clearAimLocksForTarget() {}
