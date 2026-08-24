@@ -45,6 +45,21 @@ export function updateNewtonian(entity, dt, thrustForce = { x: 0, y: 0 }, worldR
     if (worldRules?.wrap !== false) wrap(entity);
 }
 
+export function getEmergencyBrakeForce(entity, acceleration, dt) {
+    const speed = Math.hypot(entity.vx, entity.vy);
+    if (speed <= Math.max(0, acceleration) * Math.max(0, dt)) {
+        return { x: 0, y: 0, stopped: true };
+    }
+    return { x: -entity.vx / speed * acceleration, y: -entity.vy / speed * acceleration, stopped: false };
+}
+
+export function getDirectionalForce(from, to, magnitude) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const distance = Math.hypot(dx, dy) || 1;
+    return { x: dx / distance * magnitude, y: dy / distance * magnitude };
+}
+
 export function closestPointOnSegment(point, start, end) {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
