@@ -1,7 +1,8 @@
+import { PRIMARY_WEAPON_IDS, UTILITY_IDS, UTILITY_PRESENTATION } from '../entities/player.js';
+
 export class HUD {
     constructor() {
         this.maxSpeed = 800; // Updated max speed reference for meter
-        this.shopInstructionStartedAt = null;
     }
 
     draw(ctx, players, asteroids, camera, isSplitScreen = false, swapUI = false, minimapContext = null) {
@@ -28,13 +29,13 @@ export class HUD {
             this.drawSpeedMeter(ctx, players[0], 650, 980, 3);
             this.drawSpeedMeter(ctx, players[1], 1270, 980, 3);
         } else {
-            // Solo: the six primary weapons share one bottom-row selection surface.
+            // Solo: owned weapons share one dynamic bottom-row selection surface.
             this.drawPowerUpMeter(ctx, players[0], 1920 / 2, 980, 6);
             this.drawXPBar(ctx, players[0], 1920 / 2, 980, 6);
             this.drawSpeedMeter(ctx, players[0], 1920 / 2, 980, 6);
         }
 
-        this.drawShopWeaponInstruction(ctx, Boolean(minimapContext?.weaponShopOpen), 1920 / 2, 980);
+        this.drawShopWeaponBar(ctx, players[0], Boolean(minimapContext?.shopMenuOpen), 1920 / 2, 850);
     }
 
     drawShopPrompts(ctx, currentArea, shopEligible, shopMenuOpen) {
@@ -161,8 +162,15 @@ export class HUD {
             : null;
     }
 
-    getPrimaryWeaponBoxes(centerX = 1920 / 2, startY = 980, maxCols = 6) {
-        const names = ['Ballistic', 'Antigun', 'Doublegun', 'Laser', 'Orb', 'Ghost'];
+    getGameplayPrimaryWeaponIds(player) {
+        if (!player) return [];
+        const owned = PRIMARY_WEAPON_IDS.filter(id => id === 'Ballistic' || player.ownsWeapon?.(id));
+        const selected = owned.includes(player.equippedPrimaryGun) ? player.equippedPrimaryGun : 'Ballistic';
+        return [selected, ...owned.filter(id => id !== selected)];
+    }
+
+    getPrimaryWeaponBoxes(player, centerX = 1920 / 2, startY = 980, maxCols = 6, fixedOrder = false) {
+        const names = fixedOrder ? [...PRIMARY_WEAPON_IDS] : this.getGameplayPrimaryWeaponIds(player);
         const slotWidth = 90;
         const slotHeight = 35;
         const gap = 8;
@@ -186,11 +194,43 @@ export class HUD {
         if (!player || player.isDead || player.isEventHorizon) return null;
         const centerX = isSplitScreen ? 650 : 1920 / 2;
         const maxCols = isSplitScreen ? 3 : 6;
-        const box = this.getPrimaryWeaponBoxes(centerX, 980, maxCols).find(candidate =>
+        const box = this.getPrimaryWeaponBoxes(player, centerX, 980, maxCols).find(candidate =>
             x >= candidate.x && x <= candidate.x + candidate.width
             && y >= candidate.y && y <= candidate.y + candidate.height
         );
         return box ? { player, weaponId: box.weaponId } : null;
+    }
+
+    getShopWeaponBoxes(player, centerX = 1920 / 2, startY = 850) {
+        const ids = [...PRIMARY_WEAPON_IDS, 'Missile'];
+        const slotWidth = 90;
+        const gap = 8;
+        const rowWidth = ids.length * slotWidth + (ids.length - 1) * gap;
+        return ids.map((weaponId, index) => ({
+            weaponId, x: centerX - rowWidth / 2 + index * (slotWidth + gap), y: startY,
+            width: slotWidth, height: 35, isPrimary: weaponId !== 'Missile'
+        }));
+    }
+
+    getShopPrimaryWeaponAt(x, y, players) {
+        const player = players?.find(candidate => candidate.id === 1 && !candidate.isNPC);
+        if (!player || player.isDead || player.isEventHorizon) return null;
+        const box = this.getShopWeaponBoxes(player).find(candidate => candidate.isPrimary
+            && x >= candidate.x && x <= candidate.x + candidate.width
+            && y >= candidate.y && y <= candidate.y + candidate.height);
+        return box ? { player, weaponId: box.weaponId } : null;
+    }
+
+    getUtilityBoxes(player, centerX = 1920 / 2, startY = 920) {
+        const ids = UTILITY_IDS.filter(id => player?.ownsUtility?.(id));
+        const slotWidth = 90;
+        const slotHeight = 35;
+        const gap = 8;
+        const rowWidth = ids.length * slotWidth + Math.max(0, ids.length - 1) * gap;
+        return ids.map((utilityId, index) => ({
+            utilityId, x: centerX - rowWidth / 2 + index * (slotWidth + gap), y: startY,
+            width: slotWidth, height: slotHeight
+        }));
     }
 
     drawScoreboard(ctx, players, swapUI = false, gameMode = '') {
@@ -374,7 +414,7 @@ export class HUD {
     drawPowerUpMeter(ctx, player, centerX, startY, maxCols = 5) {
         if (!player || player.isEventHorizon) return; // Hide power-up meter for Event Horizon
 
-        const boxes = this.getPrimaryWeaponBoxes(centerX, startY, maxCols);
+        const boxes = this.getPrimaryWeaponBoxes(player, centerX, startY, maxCols);
         boxes.forEach(box => {
             const { weaponId: name, x, y, width: slotWidth, height: slotHeight } = box;
 
@@ -383,7 +423,7 @@ export class HUD {
             if (ammoState) this.drawAmmoMeter(ctx, ammoState, x + slotWidth / 2, y - 12, slotWidth - 14);
 
             const isCurrent = player.equippedPrimaryGun === name;
-            const isSelectable = name === 'Ballistic' || player.ownsWeapon?.(name) || false;
+            const isSelectable = true;
 
             // Box
             ctx.strokeStyle = isSelectable ? (isCurrent ? player.color : '#333') : '#555';
@@ -412,48 +452,86 @@ export class HUD {
         // Missile remains an independent add-on and is never part of primary selection.
         if (player.getWeaponPurchaseTier?.('Missile') > 0) {
             const lastBox = boxes.at(-1);
-            const missileX = lastBox.x + lastBox.width + 24;
-            this.drawAmmoMeter(ctx, player.getMissileAmmoState?.(), missileX + 45, startY - 12, 76);
-            ctx.strokeStyle = '#555';
+            const missileX = lastBox.x + lastBox.width + 8;
+            const missileY = lastBox.y;
+            this.drawAmmoMeter(ctx, player.getMissileAmmoState?.(), missileX + 45, missileY - 12, 76);
+            ctx.strokeStyle = '#333';
             ctx.lineWidth = 1;
-            ctx.fillStyle = 'rgba(0,0,0,0.5)';
-            ctx.strokeRect(missileX, startY, 90, 35);
-            ctx.fillRect(missileX, startY, 90, 35);
+            ctx.fillStyle = player.color + '1a';
+            ctx.strokeRect(missileX, missileY, 90, 35);
+            ctx.fillRect(missileX, missileY, 90, 35);
             ctx.font = '9px Orbitron';
-            ctx.fillStyle = '#aaa';
-            ctx.textAlign = 'center';
-            ctx.fillText('Missile', missileX + 45, startY + 22);
-        }
-
-        // Static capsule-selection helper appears only while a capsule bonus is available.
-        const capsules = player.powerUpCapsules;
-        const msg = player.powerUpError || (capsules > 0
-            ? 'Press Spacebar / A to select a Capsule Bonus'
-            : '');
-        if (msg) {
-            ctx.font = '14px Orbitron';
             ctx.fillStyle = '#fff';
             ctx.textAlign = 'center';
-            ctx.fillText(msg, centerX, startY - 28);
+            ctx.fillText('Missile', missileX + 45, missileY + 22);
         }
+
+        this.drawUtilityBar(ctx, player, centerX, startY - 60);
     }
 
-    drawShopWeaponInstruction(ctx, shopMenuOpen, centerX, capsuleBarY, now = performance.now()) {
-        if (!shopMenuOpen) {
-            this.shopInstructionStartedAt = null;
-            return;
-        }
-        if (this.shopInstructionStartedAt == null) this.shopInstructionStartedAt = now;
-        const elapsed = (now - this.shopInstructionStartedAt) % 13000;
-        const visible = elapsed >= 3000 || Math.floor(elapsed / 500) % 2 === 0;
-        if (!visible) return;
+    getUtilityStatus(player, utilityId) {
+        const active = utilityId === 'Boost' ? player.boostTimer > 0
+            : utilityId === 'Emergency Break' ? player.emergencyBrakeActive
+                : utilityId === 'Scrap Magnet' ? player.scrapMagnetActive
+                    : utilityId === 'Beam Hook' ? Boolean(player.beamHookTarget)
+                        : utilityId === 'Phase Shifter' ? player.phaseShifterTimer > 0 : false;
+        const cooldownRemaining = utilityId === 'Boost' ? player.boostCooldownTimer
+            : utilityId === 'Phase Shifter' ? player.phaseShifterCooldownTimer
+                : utilityId === '1/100 Black Hole' ? player.blackHoleCooldownTimer : 0;
+        return { active: Boolean(active), cooldownRemaining: Math.max(0, Number(cooldownRemaining) || 0) };
+    }
+
+    drawUtilityBar(ctx, player, centerX, startY) {
+        const boxes = this.getUtilityBoxes(player, centerX, startY);
+        boxes.forEach(box => {
+            const metadata = UTILITY_PRESENTATION[box.utilityId];
+            const status = this.getUtilityStatus(player, box.utilityId);
+            ctx.font = 'bold 11px Orbitron';
+            ctx.textAlign = 'center';
+            ctx.fillStyle = status.cooldownRemaining > 0 ? '#a8a8a8' : '#fff';
+            ctx.fillText(status.cooldownRemaining > 0
+                ? status.cooldownRemaining.toFixed(2) : metadata.input,
+            box.x + box.width / 2, box.y - 8);
+            ctx.strokeStyle = status.active ? player.color : (status.cooldownRemaining > 0 ? '#555' : '#333');
+            ctx.lineWidth = status.active ? 3 : 1;
+            ctx.fillStyle = status.active ? player.color + '33'
+                : (status.cooldownRemaining > 0 ? 'rgba(55,55,55,0.72)' : 'rgba(0,0,0,0.5)');
+            ctx.strokeRect(box.x, box.y, box.width, box.height);
+            ctx.fillRect(box.x, box.y, box.width, box.height);
+            if (status.active) {
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = player.color;
+                ctx.strokeRect(box.x, box.y, box.width, box.height);
+                ctx.shadowBlur = 0;
+            }
+            ctx.font = '8px Orbitron';
+            ctx.fillStyle = status.cooldownRemaining > 0 && !status.active ? '#777' : '#fff';
+            ctx.fillText(metadata.label, box.x + box.width / 2, box.y + 22);
+        });
+    }
+
+    drawShopWeaponBar(ctx, player, shopMenuOpen, centerX, startY) {
+        if (!shopMenuOpen || !player) return;
         ctx.save();
-        ctx.font = 'bold 24px Orbitron';
+        ctx.font = 'bold 18px Orbitron';
         ctx.fillStyle = '#00ffff';
         ctx.textAlign = 'center';
         ctx.shadowColor = '#000';
         ctx.shadowBlur = 8;
-        ctx.fillText('Select Weapon', centerX, capsuleBarY - 42);
+        ctx.fillText('Select Weapon', centerX, startY - 18);
+        this.getShopWeaponBoxes(player, centerX, startY).forEach(box => {
+            const selected = box.isPrimary && box.weaponId === player.equippedPrimaryGun;
+            const owned = box.weaponId === 'Ballistic' || player.ownsWeapon?.(box.weaponId);
+            ctx.strokeStyle = selected ? player.color : (owned ? '#00ffff' : '#555');
+            ctx.lineWidth = selected ? 3 : 1;
+            ctx.fillStyle = selected ? player.color + '33'
+                : (owned ? 'rgba(0,0,0,0.7)' : 'rgba(55,55,55,0.72)');
+            ctx.strokeRect(box.x, box.y, box.width, box.height);
+            ctx.fillRect(box.x, box.y, box.width, box.height);
+            ctx.font = '8px Orbitron';
+            ctx.fillStyle = owned ? '#fff' : '#777';
+            ctx.fillText(box.weaponId, box.x + box.width / 2, box.y + 22);
+        });
         ctx.restore();
     }
 
