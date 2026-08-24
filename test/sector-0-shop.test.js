@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { Player } from '../entities/player.js';
 import { Game, GAME_MODE, SECTOR_0_WEAPON_CATALOG } from '../game.js';
@@ -9,6 +10,13 @@ const areas = createExperimentalAreas(9600, 5400);
 const room = areas.find(area => area.roomNumber === 1);
 const shop = areas.find(isSector0ShopArea);
 const shopGame = player => ({ gameState: GAME_MODE.EXPERIMENTAL, players: [player], experimentalRooms: areas, isShopMenuOpen: true });
+
+test('Shop DOM keeps purchase rows and Back but has no duplicate primary selector', () => {
+    const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    assert.equal((html.match(/data-shop-weapon=/g) || []).length, 6);
+    assert.match(html, /id="btn-sector-0-shop-back"/);
+    assert.doesNotMatch(html, /data-shop-select-weapon|shop-selector|shop-capsule/);
+});
 
 test('Sector 0 exposes three semantic terminal areas and only Weapons accepts Shop entry', () => {
     assert.deepEqual(areas.filter(area => area.roomNumber === 0).map(area => [area.role, area.displayText, area.interaction]), [
