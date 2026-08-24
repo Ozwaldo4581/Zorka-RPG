@@ -59,6 +59,102 @@ test('Player owns session Scrap and collectible debris is 80% sized', () => {
     assert.equal(new SpaceDebris(0, 0).radius, 45 * 0.8);
 });
 
+test('ordinary debris chooses one 14-32 second lifetime and derives escalating blink phases', () => {
+    const minimum = withRandom([0, 0, 0, 0, 0], () => new SpaceDebris(0, 0));
+    const maximum = withRandom([1, 0, 0, 0, 0], () => new SpaceDebris(0, 0));
+    const midpoint = withRandom([0.5, 0, 0, 0, 0], () => new SpaceDebris(0, 0));
+    assert.equal(minimum.lifeSpan, 14);
+    assert.equal(maximum.lifeSpan, 32);
+    assert.equal(midpoint.lifeSpan, 23);
+    midpoint.update(10, { wrap: false });
+    assert.equal(midpoint.lifeSpan, 23);
+
+    midpoint.age = midpoint.lifeSpan - 3;
+    const base = midpoint.isVisibleForLifetimeWarning();
+    midpoint.age = midpoint.lifeSpan - 1.5;
+    const double = midpoint.isVisibleForLifetimeWarning();
+    midpoint.age = midpoint.lifeSpan - 0.5;
+    const triple = midpoint.isVisibleForLifetimeWarning();
+    assert.deepEqual([typeof base, typeof double, typeof triple], ['boolean', 'boolean', 'boolean']);
+    midpoint.update(0.5, { wrap: false });
+    assert.equal(midpoint.isDestroyed, true);
+    assert.equal(midpoint.isVisibleForLifetimeWarning(), false);
+});
+
+test('expired ordinary debris is removed canonically and unindexed without replacement', () => {
+    const game = destructionGame();
+    const debris = new SpaceDebris(0, 0); debris.roomId = room.id; debris.isDestroyed = true;
+    game.hazards.push(debris);
+    game.experimentalAreaIndexes.get(room.id).hazards.add(debris);
+    assert.equal(Game.prototype.removeExpiredSpaceDebris.call(game, debris), true);
+    assert.equal(game.hazards.length, 0);
+    assert.equal(game.experimentalAreaIndexes.get(room.id).hazards.has(debris), false);
+    assert.equal(Game.prototype.removeExpiredSpaceDebris.call(game, debris), false);
+});
+
+test('environmental contacts destroy only qualifying Small asteroids without rewards', () => {
+    const game = destructionGame();
+    let awards = 0;
+    game.awardXP = () => { awards++; };
+    game.hitTarget = Game.prototype.hitTarget;
+    const destroy = asteroid => {
+        game.asteroids.push(asteroid);
+        game.experimentalAreaIndexes.get(room.id).asteroids.add(asteroid);
+        asteroid.roomId = room.id;
+        return Game.prototype.destroySmallAsteroidEnvironmentally.call(game, asteroid);
+    };
+    const small = new Asteroid(0, 0, 'small');
+    assert.equal(destroy(small), true);
+    assert.equal(game.asteroids.includes(small), false);
+    assert.equal(awards, 0);
+    for (const size of ['medium', 'large']) {
+        const asteroid = new Asteroid(0, 0, size);
+        assert.equal(destroy(asteroid), false);
+        assert.equal(asteroid.isDestroyed, false);
+    }
+});
+
+test('Small asteroid contact pass covers NPC, every asteroid tier, and Satellite', () => {
+    const run = ({ asteroids, players = [], hazards = [] }) => {
+        const game = destructionGame();
+        game.asteroids.push(...asteroids);
+        game.players.push(...players);
+        game.hazards.push(...hazards);
+        game.asteroidPlayerContacts = new WeakMap();
+        game.hitTarget = Game.prototype.hitTarget;
+        game.destroySmallAsteroidEnvironmentally = Game.prototype.destroySmallAsteroidEnvironmentally;
+        game.compactRemovedProjectiles = Game.prototype.compactRemovedProjectiles;
+        for (const entity of [...asteroids, ...players, ...hazards]) entity.roomId = room.id;
+        Game.prototype.checkCollisions.call(game);
+        return game;
+    };
+
+    for (const otherSize of ['large', 'medium']) {
+        const small = new Asteroid(10, 10, 'small');
+        const other = new Asteroid(10, 10, otherSize);
+        run({ asteroids: [small, other] });
+        assert.equal(small.isDestroyed, true);
+        assert.equal(other.isDestroyed, false);
+    }
+
+    const first = new Asteroid(10, 10, 'small');
+    const second = new Asteroid(10, 10, 'small');
+    run({ asteroids: [first, second] });
+    assert.deepEqual([first.isDestroyed, second.isDestroyed], [true, true]);
+
+    const npcSmall = new Asteroid(10, 10, 'small');
+    const npc = new Player(10, 10, 9); npc.isNPC = true; npc.spawnImmunityTimer = 0;
+    run({ asteroids: [npcSmall], players: [npc] });
+    assert.equal(npcSmall.isDestroyed, true);
+    assert.equal(npc.isDead, false);
+
+    const satelliteSmall = new Asteroid(10, 10, 'small');
+    const satellite = new Satellite(10, 10);
+    run({ asteroids: [satelliteSmall], hazards: [satellite] });
+    assert.equal(satelliteSmall.isDestroyed, true);
+    assert.equal(satellite.isDestroyed, false);
+});
+
 test('RPG human overlap collects debris once without damage or shield loss', () => {
     const human = new Player(100, 100, 1);
     human.spawnImmunityTimer = 0;

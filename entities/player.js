@@ -640,6 +640,14 @@ export class Player {
         };
     }
 
+    refillMissileClip() {
+        const capacity = this.getMissileCapacity();
+        if (!this.hasMissile || capacity <= 0) return false;
+        this.missileAmmo = capacity;
+        this.missileReloadTimer = 0;
+        return true;
+    }
+
     resetClip() {
         this.clipRounds = this.getClipCapacity();
         this.clipReloadTimer = 0;

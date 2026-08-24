@@ -68,6 +68,32 @@ test('Game resolves immunity, shields, HP, death, and respawn in order', () => {
     assert.deepEqual([victim.isDead, victim.currentHP, victim.maxHP, victim.hpRechargeTimer], [false, 8, 8, 0]);
 });
 
+test('respawn refills only an acquired Missile clip and preserves its tier and selected primary', () => {
+    const player = new Player(0, 0, 1);
+    player.weaponPurchaseTiers.Laser = 1;
+    player.weaponPurchaseTiers.Missile = 4;
+    player.restorePurchasedWeaponLoadout();
+    player.selectPrimaryWeapon('Laser');
+    player.missileAmmo = 1;
+    player.missileReloadTimer = 7;
+    player.isDead = true;
+    const game = {
+        players: [player], gameState: 'ARCADE', audio: {},
+        getActiveCameras: () => [], beginGameplayMusic() {}
+    };
+    Game.prototype.respawnPlayer.call(game, player);
+    assert.deepEqual(
+        [player.hasMissile, player.missileLevel, player.missileAmmo, player.missileReloadTimer, player.equippedPrimaryGun],
+        [true, 4, player.getMissileCapacity(), 0, 'Laser']
+    );
+
+    const unowned = new Player(0, 0, 2);
+    unowned.isDead = true;
+    game.players = [unowned];
+    Game.prototype.respawnPlayer.call(game, unowned);
+    assert.deepEqual([unowned.hasMissile, unowned.missileLevel, unowned.missileAmmo], [false, 0, 0]);
+});
+
 test('Game resolves a multi-point hit as one shield-first damage event', () => {
     globalThis.window = globalThis.window || {};
     const cases = [

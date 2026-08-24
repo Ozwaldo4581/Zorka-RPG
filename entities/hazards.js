@@ -11,6 +11,8 @@ export class SpaceDebris {
         this.hits = 0;
         this.isDestroyed = false;
         this.isDebris = true; // For reward check
+        this.lifeSpan = 14 + Math.random() * 18;
+        this.age = 0;
 
         const baseSpeed = 40 + Math.random() * 80;
         const angle = Math.random() * Math.PI * 2;
@@ -20,12 +22,32 @@ export class SpaceDebris {
         this.rotSpeed = (Math.random() - 0.5) * 1.5;
     }
 
-    update(dt, worldRules = null) {
-        updateNewtonian(this, dt, undefined, worldRules);
+    update(dt, gameOrWorldRules = null, worldRules = null) {
+        this.age += Math.max(0, Number(dt) || 0);
+        if (this.age >= this.lifeSpan) {
+            this.age = this.lifeSpan;
+            this.isDestroyed = true;
+            return;
+        }
+        updateNewtonian(this, dt, undefined, worldRules || gameOrWorldRules);
         this.rotation += this.rotSpeed * dt;
     }
 
+    getRemainingLifetime() {
+        return Math.max(0, this.lifeSpan - this.age);
+    }
+
+    isVisibleForLifetimeWarning() {
+        const remaining = this.getRemainingLifetime();
+        if (remaining <= 0) return false;
+        if (remaining > 3) return true;
+        const frequencyMultiplier = remaining <= 0.5 ? 3 : remaining <= 1.5 ? 2 : 1;
+        const baseFrequency = 4;
+        return Math.floor(this.age * baseFrequency * frequencyMultiplier * 2) % 2 === 0;
+    }
+
     draw(ctx, assets, camera) {
+        if (!this.isVisibleForLifetimeWarning()) return;
         ctx.save();
         camera.apply(ctx, this.x, this.y);
         ctx.rotate(this.rotation);
