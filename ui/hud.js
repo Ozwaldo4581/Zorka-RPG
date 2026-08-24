@@ -527,10 +527,10 @@ export class HUD {
                 minimapContext.rooms.find(candidate => candidate.id === id)).filter(Boolean)]
             : [];
         const topologyBounds = usesRoom ? {
-            left: Math.min(...topologyAreas.map(area => area.bounds.left)),
-            right: Math.max(...topologyAreas.map(area => area.bounds.right)),
-            top: Math.min(...topologyAreas.map(area => area.bounds.top)),
-            bottom: Math.max(...topologyAreas.map(area => area.bounds.bottom))
+            left: minimapContext.owner.x - DESIGN_WIDTH,
+            right: minimapContext.owner.x + DESIGN_WIDTH,
+            top: minimapContext.owner.y - DESIGN_HEIGHT,
+            bottom: minimapContext.owner.y + DESIGN_HEIGHT
         } : null;
         const topologyScale = usesRoom ? Math.min(
             mapWidth / (topologyBounds.right - topologyBounds.left),
@@ -547,7 +547,9 @@ export class HUD {
             }
             : { x: x + entity.x * scale, y: y + entity.y * scale };
         const belongsOnMap = entity => !minimapContext?.usesRooms
-            || (usesRoom && entity.roomId === minimapContext.owner.roomId);
+            || (usesRoom && entity.roomId === minimapContext.owner.roomId
+                && entity.x >= topologyBounds.left && entity.x <= topologyBounds.right
+                && entity.y >= topologyBounds.top && entity.y <= topologyBounds.bottom);
 
         // Background
         ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
@@ -557,6 +559,11 @@ export class HUD {
         ctx.strokeStyle = '#00ffff';
         ctx.lineWidth = 1;
         ctx.strokeRect(x, y, mapWidth, mapHeight);
+
+        ctx.save?.();
+        ctx.beginPath();
+        ctx.rect?.(x, y, mapWidth, mapHeight);
+        ctx.clip?.();
 
         // 9x9 Grid lines
         ctx.strokeStyle = '#333';
@@ -592,7 +599,7 @@ export class HUD {
             if (!belongsOnMap(a)) return;
             const point = positionOnMap(a);
             ctx.beginPath();
-            ctx.arc(point.x, point.y, Math.max(1, a.radius * (usesRoom ? mapWidth / room.width : scale)), 0, Math.PI * 2);
+            ctx.arc(point.x, point.y, Math.max(1, a.radius * (usesRoom ? topologyScale : scale)), 0, Math.PI * 2);
             ctx.fill();
         });
 
@@ -630,5 +637,6 @@ export class HUD {
                 ctx.stroke();
             }
         });
+        ctx.restore?.();
     }
 }

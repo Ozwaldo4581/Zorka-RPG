@@ -228,8 +228,8 @@ test('Adventure minimap projects the nook from authoritative interior walls', ()
 
   const nookSegments = segments.slice(-3);
   assert.equal(nookSegments.length, 3);
-  assert.deepEqual(nookSegments.map(segment => segment.start.x), [1580, 1628, 1580]);
-  assert.deepEqual(nookSegments.map(segment => segment.end.x), [1628, 1580, 1580]);
+  assert.deepEqual(nookSegments.map(segment => segment.start.x), [2140, 1340, 1340]);
+  assert.deepEqual(nookSegments.map(segment => segment.end.x), [1340, 1340, 1340]);
 });
 
 test('Adventure NPC death reconciles the canonical population to one', () => {
@@ -243,4 +243,29 @@ test('Adventure NPC death reconciles the canonical population to one', () => {
   game.experimentalAreaIndexes.set(npc.roomId, { players: new Set([npc]) });
   Game.prototype.resolveExperimentalOrdinaryNPCDeath.call(game, npc);
   assert.equal(game.players.filter(player => player.isNPC && !player.isDead).length, 1);
+});
+
+test('Adventure minimap uses an undistorted local window and omits distant markers', () => {
+  const [room] = createExperimentalAreas(EXPERIMENTAL_ROOM_WIDTH, EXPERIMENTAL_ROOM_HEIGHT);
+  const owner = { id: 1, x: 4800, y: 2700, roomId: room.id };
+  const nearby = { id: 2, x: owner.x + 960, y: owner.y + 540, roomId: room.id };
+  const distant = { id: 3, x: room.bounds.right - 1, y: owner.y, roomId: room.id };
+  const arcs = [];
+  const ctx = {
+    fillStyle: '', strokeStyle: '', lineWidth: 0,
+    fillRect() {}, strokeRect() {}, save() {}, restore() {}, rect() {}, clip() {},
+    beginPath() {}, stroke() {}, fill() {}, moveTo() {}, lineTo() {},
+    arc(x, y, radius) { arcs.push({ x, y, radius }); }
+  };
+
+  HUD.prototype.drawMinimap.call({}, ctx, [owner, nearby, distant], [], {}, false, {
+    usesRooms: true, owner, rooms: [room], hazards: []
+  });
+
+  assert.equal(arcs.length, 2, 'only owner and nearby player are inside the local source window');
+  assert.deepEqual(arcs.map(({ x, y }) => [x, y]), [[1740, 970], [1820, 1015]]);
+  assert.equal((arcs[1].x - arcs[0].x) / 960, (arcs[1].y - arcs[0].y) / 540,
+    'one uniform projection scale preserves geometry');
+  assert.deepEqual([owner.x, owner.y, nearby.x, nearby.y, distant.x, distant.y],
+    [4800, 2700, 5760, 3240, room.bounds.right - 1, 2700]);
 });

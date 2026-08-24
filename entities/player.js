@@ -590,12 +590,29 @@ export class Player {
         }
     }
 
+    beginPrimaryReload() {
+        if (this.clipReloadTimer > 0 || this.clipRounds >= this.getClipCapacity()) return false;
+        this.clipReloadTimer = CLIP_RELOAD_DURATION;
+        return true;
+    }
+
+    beginMissileReload() {
+        const capacity = this.getMissileCapacity();
+        if (capacity <= 0 || this.missileReloadTimer > 0 || this.missileAmmo >= capacity) return false;
+        this.missileReloadTimer = MISSILE_RELOAD_DURATION;
+        return true;
+    }
+
+    reloadAllWeapons() {
+        const primaryStarted = this.beginPrimaryReload();
+        const missileStarted = this.beginMissileReload();
+        return primaryStarted || missileStarted;
+    }
+
     consumeClipRound() {
         if (this.clipReloadTimer > 0 || this.clipRounds <= 0) return false;
         this.clipRounds--;
-        if (this.clipRounds === 0) {
-            this.clipReloadTimer = CLIP_RELOAD_DURATION;
-        }
+        if (this.clipRounds === 0) this.beginPrimaryReload();
         return true;
     }
 
@@ -605,7 +622,7 @@ export class Player {
             || this.missileAmmo <= 0 || this.missileReloadTimer > 0 || this.missileShotTimer > 0) return null;
         this.missileAmmo--;
         this.missileShotTimer = MISSILE_SHOT_INTERVAL;
-        if (this.missileAmmo === 0) this.missileReloadTimer = MISSILE_RELOAD_DURATION;
+        if (this.missileAmmo === 0) this.beginMissileReload();
         const missiles = [this.createMissile(this.x, this.y, this.rotation)];
         this.ghosts.forEach(ghost => missiles.push(this.createMissile(ghost.x, ghost.y, ghost.rotation)));
         return missiles;
