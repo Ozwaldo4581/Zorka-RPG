@@ -40,6 +40,10 @@ const HUMAN_STARTING_HP_BONUS = 5;
 export const DAMAGE_PULSE_DURATION = 0.35;
 export const SHOP_WEAPON_IDS = Object.freeze(['Antigun', 'Doublegun', 'Missile', 'Laser', 'Orb', 'Ghost']);
 export const PRIMARY_WEAPON_IDS = Object.freeze(['Ballistic', 'Antigun', 'Doublegun', 'Laser', 'Orb', 'Ghost']);
+export const UTILITY_IDS = Object.freeze([
+    'Boost', 'Emergency Break', 'Scrap Collector', 'Beam Hook',
+    'Phase Shifter', "4D Jacob's Latter", '1/100 Black Hole'
+]);
 
 export function getHPBlockLayout(maxHP, totalWidth = 120, normalGap = 2, minimumBlockWidth = 0.5) {
     const blockCount = Math.max(1, Math.floor(Number(maxHP) || 1));
@@ -82,6 +86,7 @@ export class Player {
         // Session-local RPG resource. Game owns collection outcomes; Player owns the count.
         this.scrap = 0;
         this.weaponPurchaseTiers = Object.seal(Object.fromEntries(SHOP_WEAPON_IDS.map(id => [id, 0])));
+        this.purchasedUtilities = Object.seal(Object.fromEntries(UTILITY_IDS.map(id => [id, false])));
         this.equippedPrimaryGun = 'Ballistic';
         this.maxPowerUpSlots = 5;
         this.activeGun = 'Normal'; // Ballistic forms: Normal/Base Gun, Antigun, Double
@@ -174,6 +179,16 @@ export class Player {
         const gained = Math.max(0, Math.floor(Number(amount) || 0));
         this.scrap += gained;
         return gained;
+    }
+
+    ownsUtility(utilityId) {
+        return this.purchasedUtilities?.[utilityId] === true;
+    }
+
+    purchaseUtility(utilityId) {
+        if (!UTILITY_IDS.includes(utilityId) || this.ownsUtility(utilityId)) return false;
+        this.purchasedUtilities[utilityId] = true;
+        return true;
     }
 
     configureWispLifetime(random = Math.random) {
