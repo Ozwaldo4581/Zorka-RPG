@@ -3803,6 +3803,11 @@ export class Game {
             h.previousY = h.y;
             h.update(dt, this, worldRules);
         });
+        for (const hazard of [...simulationHazards]) {
+            if (hazard instanceof SpaceDebris && hazard.isDestroyed) {
+                Game.prototype.removeExpiredSpaceDebris.call(this, hazard);
+            }
+        }
         if (worldRules.usesRooms) this.resolveExperimentalEntityWalls({
             asteroids: simulationAsteroids,
             hazards: simulationHazards
@@ -4229,6 +4234,7 @@ export class Game {
 
     respawnPlayer(player) {
         player.resetTransientLifeState();
+        player.refillMissileClip();
 
         const primaryMusicPlayer = Game.prototype.getPrimaryMusicPlayer.call(this);
         if (!player.isNPC && player === primaryMusicPlayer && this.gameState !== GAME_MODE.ARCADE) {
@@ -4400,6 +4406,22 @@ export class Game {
                 return; // Prevent kills/high-tide tracking for debris/satellites
             }
         }
+    }
+
+    removeExpiredSpaceDebris(debris) {
+        if (!(debris instanceof SpaceDebris) || !debris.isDestroyed) return false;
+        Game.prototype.unindexExperimentalEntity.call(this, 'hazards', debris);
+        const index = this.hazards.indexOf(debris);
+        if (index === -1) return false;
+        this.hazards.splice(index, 1);
+        return true;
+    }
+
+    destroySmallAsteroidEnvironmentally(asteroid) {
+        if (!(asteroid instanceof Asteroid) || asteroid.size !== 'small' || asteroid.isDestroyed) return false;
+        asteroid.hits = asteroid.maxHits - 1;
+        this.hitTarget(asteroid, null);
+        return asteroid.isDestroyed;
     }
 
     applyStandardTargetDamage(target, amount, killer) {
@@ -4849,6 +4871,45 @@ export class Game {
             if (consumeSecond && !p2.isRemoved) Game.prototype.consumeCollidingProjectile.call(this, p2);
             if (p1.isRemoved || p1.hasDetonated) return false;
         }, collisionContext.projectileIndex);
+
+        // Small asteroids are fragile environmental bodies. Resolve each unordered
+        // asteroid pair once, then preserve the larger participant unchanged.
+        const asteroidSnapshot = [...activeAsteroids];
+        for (let firstIndex = 0; firstIndex < asteroidSnapshot.length; firstIndex++) {
+            const first = asteroidSnapshot[firstIndex];
+            if (!first || first.isDestroyed) continue;
+            for (let secondIndex = firstIndex + 1; secondIndex < asteroidSnapshot.length; secondIndex++) {
+                const second = asteroidSnapshot[secondIndex];
+                if (!second || second.isDestroyed) continue;
+                if (!Game.prototype.areExperimentalEntitiesCoLocated.call(this, first, second)) continue;
+                if (!checkCollision(first, second)) continue;
+                if (first.size === 'small') Game.prototype.destroySmallAsteroidEnvironmentally.call(this, first);
+                if (second.size === 'small') Game.prototype.destroySmallAsteroidEnvironmentally.call(this, second);
+            }
+        }
+
+        // NPC and Satellite outcomes remain unchanged; only the contacting Small
+        // asteroid receives this environmental destruction outcome.
+        for (const asteroid of [...activeAsteroids]) {
+            if (!asteroid || asteroid.isDestroyed || asteroid.size !== 'small') continue;
+            for (const player of this.players) {
+                if (!player?.isNPC || player.isDead || player.isEliminated) continue;
+                if (!Game.prototype.areExperimentalEntitiesCoLocated.call(this, asteroid, player)) continue;
+                if (checkCollision(asteroid, player)) {
+                    Game.prototype.destroySmallAsteroidEnvironmentally.call(this, asteroid);
+                    break;
+                }
+            }
+            if (asteroid.isDestroyed) continue;
+            for (const hazard of activeHazards) {
+                if (!hazard || hazard.isDestroyed || !(hazard instanceof Satellite)) continue;
+                if (!Game.prototype.areExperimentalEntitiesCoLocated.call(this, asteroid, hazard)) continue;
+                if (checkCollision(asteroid, hazard)) {
+                    Game.prototype.destroySmallAsteroidEnvironmentally.call(this, asteroid);
+                    break;
+                }
+            }
+        }
 
         // Players vs Asteroids and Hazards
         this.asteroidPlayerContacts ??= new WeakMap();
