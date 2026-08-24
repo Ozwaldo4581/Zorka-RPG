@@ -4,14 +4,14 @@
 
 Zorka RPG is a local-first Newtonian shooter built with plain ES modules and Vite. **Adventure Mode is the sole supported gameplay route; Options is the sole supported configuration route.** The menu artwork for Arcade, Arena, and Local PvP remains visible but disabled and unreachable.
 
-Adventure retains the legacy internal `EXPERIMENTAL` discriminator and method names to avoid an unrelated broad rename. Its immutable topology is owned by `world/experimental_rooms.js` and contains Sector 1 at its established 9600 × 5400 dimensions plus the small terminal **Sector 0 Shop** hallway on the left. The Shop is a real connected area with one bidirectional entrance and a solid dead end; its semantic role drives authoritative Shop eligibility without duplicating its bounds in gameplay or presentation code. The generic space background remains, while the former desk image stack is neither loaded nor rendered.
+Adventure retains the legacy internal `EXPERIMENTAL` discriminator and method names to avoid an unrelated broad rename. Its immutable topology is owned by `world/experimental_rooms.js` and contains Sector 1 at its established 9600 × 5400 dimensions plus three terminal Sector 0 areas: Weapons on the left, Utility above, and Ship Modification on the right. Each is a real connected area with a bidirectional entrance and solid dead end; semantic roles make only Weapons interactive without duplicating bounds in gameplay or presentation code.
 
 ## Ownership
 
 - `Game` owns Adventure session state, canonical collections, spawning, one-NPC population reconciliation, collision outcomes, rewards, damage/death, and screen flow.
 - `Player` owns aim-relative Newtonian movement, lock state, progression, primary and Missile clip ammunition/reload, and shot eligibility timers.
 - `Projectile` owns flight and owner-lock homing.
-- `world/experimental_rooms.js` owns immutable Sector 1 and terminal Sector 0 Shop topology and identity.
+- `world/experimental_rooms.js` owns immutable Sector 1 and all three terminal Sector 0 area topologies and identities.
 - `Game` coordinates Shop eligibility, modal input, prices, and Scrap transactions; `Player` owns Scrap, independent purchase tiers, and the applied upgrade state.
 - `physics.js` remains stateless and owns wall contact, slide, reflection, and swept collision math.
 - Camera, HUD, audio, and menus consume gameplay truth and dispatch intent.

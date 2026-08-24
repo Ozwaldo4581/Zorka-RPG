@@ -79,14 +79,18 @@ export function getSector9BBGAnchorWorldPosition(room, anchor) {
 }
 
 export const EXPERIMENTAL_AREA_TYPE = Object.freeze({ ROOM: 'ROOM', HALLWAY: 'HALLWAY' });
-export const EXPERIMENTAL_AREA_ROLE = Object.freeze({ SHOP: 'SHOP' });
+export const EXPERIMENTAL_AREA_ROLE = Object.freeze({
+    WEAPONS_SHOP: 'WEAPONS_SHOP',
+    UTILITY_SHOP: 'UTILITY_SHOP',
+    SHIP_MODIFICATION: 'SHIP_MODIFICATION'
+});
 export const SECTOR_0_SHOP_NAME = 'Sector 0 Shop';
 
 export function isSector0ShopArea(areaOrId, areas = []) {
     const area = typeof areaOrId === 'string'
         ? areas.find(candidate => candidate.id === areaOrId)
         : areaOrId;
-    return area?.role === EXPERIMENTAL_AREA_ROLE.SHOP;
+    return area?.role === EXPERIMENTAL_AREA_ROLE.WEAPONS_SHOP;
 }
 
 export const EXPERIMENTAL_SHORTCUT_ID = Object.freeze({
@@ -400,14 +404,30 @@ function buildWalls(shell, entranceShells, interiorWalls = []) {
 
 export function createExperimentalAreas(roomWidth, roomHeight) {
     const roomId = 'experimental-room-1';
-    const hallwayId = 'experimental-sector-0-dead-end-hallway';
     const roomBounds = boundsAt(0, 0, roomWidth, roomHeight);
-    const hallwayBounds = boundsAt(
-        roomBounds.left - EXPERIMENTAL_SECTOR_0_DEAD_END_DEPTH,
-        (roomBounds.top + roomBounds.bottom - EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH) / 2,
-        EXPERIMENTAL_SECTOR_0_DEAD_END_DEPTH,
-        EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH
-    );
+    const terminalDefinitions = [
+        {
+            id: 'experimental-sector-0-weapons-shop', role: EXPERIMENTAL_AREA_ROLE.WEAPONS_SHOP,
+            name: SECTOR_0_SHOP_NAME, displayText: 'Purchase Weapons', interaction: 'WEAPONS_SHOP',
+            bounds: boundsAt(roomBounds.left - EXPERIMENTAL_SECTOR_0_DEAD_END_DEPTH,
+                (roomBounds.top + roomBounds.bottom - EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH) / 2,
+                EXPERIMENTAL_SECTOR_0_DEAD_END_DEPTH, EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH)
+        },
+        {
+            id: 'experimental-sector-0-utility-shop', role: EXPERIMENTAL_AREA_ROLE.UTILITY_SHOP,
+            name: 'Sector 0 Utility', displayText: 'Purchase Utility', interaction: null,
+            bounds: boundsAt((roomBounds.left + roomBounds.right - EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH) / 2,
+                roomBounds.top - EXPERIMENTAL_SECTOR_0_DEAD_END_DEPTH,
+                EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH, EXPERIMENTAL_SECTOR_0_DEAD_END_DEPTH)
+        },
+        {
+            id: 'experimental-sector-0-ship-modification', role: EXPERIMENTAL_AREA_ROLE.SHIP_MODIFICATION,
+            name: 'Sector 0 Ship Modification', displayText: 'Modify Ship', interaction: null,
+            bounds: boundsAt(roomBounds.right,
+                (roomBounds.top + roomBounds.bottom - EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH) / 2,
+                EXPERIMENTAL_SECTOR_0_DEAD_END_DEPTH, EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH)
+        }
+    ];
     const roomShell = {
         ...createExperimentalRoomProgression(1),
         npcCount: 1,
@@ -421,21 +441,15 @@ export function createExperimentalAreas(roomWidth, roomHeight) {
         population: FULL_ARENA_POPULATION,
         npcAggressionSource: 'ARENA_OPTIONS'
     };
-    const hallwayShell = {
-        id: hallwayId,
-        role: EXPERIMENTAL_AREA_ROLE.SHOP,
-        name: SECTOR_0_SHOP_NAME,
-        areaType: EXPERIMENTAL_AREA_TYPE.HALLWAY,
-        roomNumber: 0,
-        origin: point(hallwayBounds.left, hallwayBounds.top),
-        width: EXPERIMENTAL_SECTOR_0_DEAD_END_DEPTH,
-        height: EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH,
-        bounds: hallwayBounds
-    };
-    const entrance = Object.freeze({
-        ...connectionGeometry(roomShell, hallwayShell),
-        openingWidth: EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH
-    });
+    const terminalShells = terminalDefinitions.map(definition => ({
+        ...definition, areaType: EXPERIMENTAL_AREA_TYPE.HALLWAY, roomNumber: 0,
+        origin: point(definition.bounds.left, definition.bounds.top),
+        width: definition.bounds.right - definition.bounds.left,
+        height: definition.bounds.bottom - definition.bounds.top
+    }));
+    const entrances = terminalShells.map(shell => Object.freeze({
+        ...connectionGeometry(roomShell, shell), openingWidth: EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH
+    }));
     const wallProperties = {
         wallCollisionThickness: EXPERIMENTAL_WALL_COLLISION_THICKNESS,
         wallVisualCoreThickness: EXPERIMENTAL_WALL_VISUAL_CORE_THICKNESS,
@@ -444,10 +458,10 @@ export function createExperimentalAreas(roomWidth, roomHeight) {
     };
     return [createExperimentalArea({
         ...roomShell,
-        walls: buildWalls(roomShell, [entrance]),
+        walls: buildWalls(roomShell, entrances),
         spawnExclusionRegions: [],
-        connectedAreaIds: [hallwayId],
-        entrances: [entrance],
+        connectedAreaIds: terminalShells.map(shell => shell.id),
+        entrances,
         ...wallProperties,
         spawnRegion: Object.freeze({
             left: roomBounds.left + SPAWN_INSET,
@@ -455,13 +469,10 @@ export function createExperimentalAreas(roomWidth, roomHeight) {
             right: roomBounds.right - SPAWN_INSET,
             bottom: roomBounds.bottom - SPAWN_INSET
         })
-    }), createExperimentalArea({
-        ...hallwayShell,
-        walls: buildWalls(hallwayShell, [entrance]),
-        connectedAreaIds: [roomId],
-        entrances: [entrance],
-        ...wallProperties
-    })];
+    }), ...terminalShells.map((shell, index) => createExperimentalArea({
+        ...shell, walls: buildWalls(shell, [entrances[index]]),
+        connectedAreaIds: [roomId], entrances: [entrances[index]], ...wallProperties
+    }))];
 }
 
 export function createExperimentalRooms(worldWidth, worldHeight) {
