@@ -51,6 +51,7 @@ export const DEFAULT_P1_CONTROL_MODE = 'KEYBOARD';
 export const MISSILE_DAMAGE = 3;
 export const RPG_DEBRIS_DROP_CHANCE = 0.33;
 export const RPG_DEBRIS_SCRAP_VALUE = 10;
+export const SPACE_BAR_ROUND_PRICE = 1000;
 export const SECTOR_0_WEAPON_CATALOG = Object.freeze([
     Object.freeze({ id: 'Antigun', label: 'Antigun', prices: Object.freeze([100, 200, 400]) }),
     Object.freeze({ id: 'Doublegun', label: 'Doublegun', prices: Object.freeze([100, 200, 400]) }),
@@ -1474,8 +1475,7 @@ export class Game {
         const room = Game.prototype.getExperimentalRoom.call(this, player?.experimentalLastCombatRoomId || 'experimental-room-1');
         const encounter = Game.prototype.getExperimentalEncounterState.call(this, room?.id);
         if (!player || !room || !encounter) return null;
-        const roundsBought = Math.max(0, encounter.npcCount - room.npcCount);
-        return { room, encounter, price: (roundsBought + 1) * 1000 };
+        return { room, encounter, price: SPACE_BAR_ROUND_PRICE };
     }
 
     handleSpaceBarRoundIntent() {
@@ -1485,11 +1485,7 @@ export class Game {
         const offer = Game.prototype.getSpaceBarRoundOffer.call(this, player);
         if (!offer || player.scrap < offer.price) return false;
         player.scrap -= offer.price;
-        player.level++;
-        player.increaseMaxHP();
-        player.increaseMaxShields();
-        player.pendingLevelUps++;
-        offer.encounter.npcCount++;
+        offer.encounter.npcLevel++;
         Game.prototype.reconcileExperimentalOrdinaryNPCPopulation.call(this, offer.room.id);
         Game.prototype.refreshSpaceBarMenu.call(this);
         return true;
@@ -2141,7 +2137,7 @@ export class Game {
                 door.roomIds.includes(room.id) && door.roomIds.includes(hallway.id));
             this.experimentalEncounterStates.set(room.id, {
                 roomId: room.id, encounterCleared: false, doorUnlocked: false, populationSpawned: false,
-                npcCount: room.npcCount, npcLevel: room.npcLevel, specterCount: 0,
+                npcLevel: room.npcLevel, specterCount: 0,
                 requiredPlayerKills: room.npcCount, playerCreditedKills: 0,
                 progressionDoorId: progressionDoor?.id || null,
                 progressionHallwayId: hallway?.id || null
@@ -2411,7 +2407,7 @@ export class Game {
         if (!room || !Game.prototype.allowsOrdinaryExperimentalNPCPopulation.call(this, room)
             || room.roomNumber >= SECTOR_9_BBG_ENCOUNTER.roomNumber) return [];
         const encounter = Game.prototype.getExperimentalEncounterState.call(this, room.id);
-        const ordinaryCount = spawnCount === null ? (encounter?.npcCount ?? room.npcCount) : Math.max(0, spawnCount);
+        const ordinaryCount = spawnCount === null ? (encounter?.npcLevel ?? room.npcLevel) : Math.max(0, spawnCount);
         const specterCount = spawnCount === null ? (encounter?.specterCount || 0)
             : (subtype === 'SPECTER' ? ordinaryCount : 0);
         const spawnTypes = [
@@ -2439,7 +2435,7 @@ export class Game {
             } else npc.rollAggression();
             const npcLevel = isSpecter
                 ? 1
-                : Game.prototype.getExperimentalEnemyLevel.call(this, encounter?.npcLevel ?? room.npcLevel);
+                : Math.max(1, Math.floor(Number(encounter?.npcLevel ?? room.npcLevel) || 1));
             npc.initializeNPCLevel(npcLevel, Math.random);
             this.players.push(npc);
             Game.prototype.indexExperimentalEntity.call(this, 'players', npc);
@@ -2530,10 +2526,16 @@ export class Game {
         const room = Game.prototype.getExperimentalRoom.call(this, roomId);
         const encounter = Game.prototype.getExperimentalEncounterState.call(this, roomId);
         if (!room || !encounter) return 0;
-        const living = this.players.filter(player =>
+        const livingNPCs = this.players.filter(player =>
             Game.prototype.isLivingOrdinaryExperimentalRoomEnemy.call(this, player, roomId)
-        ).length;
-        const missing = Math.max(0, encounter.npcCount - living);
+        );
+        const targetLevel = Math.max(1, Math.floor(Number(encounter.npcLevel) || 1));
+        for (const npc of livingNPCs) {
+            if (npc.level === targetLevel) continue;
+            npc.resetLevelProgress();
+            npc.initializeNPCLevel(targetLevel, Math.random);
+        }
+        const missing = Math.max(0, targetLevel - livingNPCs.length);
         if (missing) this.spawnOrdinaryExperimentalRoomNPCs(roomId, this.players, missing, 'ORDINARY');
         return missing;
     }
@@ -2785,7 +2787,15 @@ export class Game {
 
     resetExperimentalWorldLoop(player) {
         if (this.gameState !== GAME_MODE.EXPERIMENTAL || !player || player.isNPC) return false;
+        const encounterLevels = new Map([...(this.experimentalEncounterStates || [])]
+            .map(([roomId, encounter]) => [roomId, encounter.npcLevel]));
         Game.prototype.initializeExperimentalWorldState.call(this);
+        for (const [roomId, npcLevel] of encounterLevels) {
+            const encounter = Game.prototype.getExperimentalEncounterState.call(this, roomId);
+            if (!encounter) continue;
+            encounter.npcLevel = Math.max(1, Math.floor(Number(npcLevel) || 1));
+            Game.prototype.reconcileExperimentalOrdinaryNPCPopulation.call(this, roomId);
+        }
         player.experimentalWorldResetPending = false;
         return true;
     }
