@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { Player } from '../entities/player.js';
 import { Game, GAME_MODE, SECTOR_0_WEAPON_CATALOG } from '../game.js';
@@ -9,6 +10,13 @@ const areas = createExperimentalAreas(9600, 5400);
 const room = areas.find(area => area.roomNumber === 1);
 const shop = areas.find(isSector0ShopArea);
 const shopGame = player => ({ gameState: GAME_MODE.EXPERIMENTAL, players: [player], experimentalRooms: areas, isShopMenuOpen: true });
+
+test('Shop DOM keeps purchase rows and Back but has no duplicate primary selector', () => {
+    const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+    assert.equal((html.match(/data-shop-weapon=/g) || []).length, 6);
+    assert.match(html, /id="btn-sector-0-shop-back"/);
+    assert.doesNotMatch(html, /data-shop-select-weapon|shop-selector|shop-capsule/);
+});
 
 test('Sector 0 exposes three semantic terminal areas and only Weapons accepts Shop entry', () => {
     assert.deepEqual(areas.filter(area => area.roomNumber === 0).map(area => [area.role, area.displayText, area.interaction]), [
@@ -104,13 +112,15 @@ test('Player primary selection defaults to Ballistic and rejects Missile and uno
     assert.deepEqual({ ...player.weaponPurchaseTiers, Laser: 0 }, initialProgress);
 });
 
-test('purchased progress survives death cleanup while transient state resets', () => {
+test('purchased progress, Missile acquisition, and selected primary survive death cleanup and respawn', () => {
     const player = new Player(0, 0, 1);
     for (const id of ['Antigun', 'Doublegun', 'Missile', 'Laser', 'Orb', 'Ghost']) player.weaponPurchaseTiers[id] = 1;
-    player.equipPurchasedWeapon('Ghost');
+    player.restorePurchasedWeaponLoadout();
+    player.equipPurchasedWeapon('Laser');
     player.powerUpCapsules = 4;
     player.currentHP = 1;
     player.spawnImmunityTimer = 0;
+    const purchasedTiers = structuredClone(player.weaponPurchaseTiers);
     const game = Object.assign(Object.create(Game.prototype), { ...shopGame(player), gameState: GAME_MODE.EXPERIMENTAL, cameras: [], projectiles: [], audio: { play() {} }, vfx: [],
         isHardcoreActive: Game.prototype.isHardcoreActive, createExplosion() {}, playSpatialEvent() {},
         getActiveCameras() { return []; }, isCombatSourceLocked() { return false; }, canDamagePlayerTarget() { return true; },
@@ -119,8 +129,57 @@ test('purchased progress survives death cleanup while transient state resets', (
     globalThis.window = {};
     Game.prototype.playerDeath.call(game, player, null);
     delete globalThis.window;
-    assert.deepEqual(Object.values(player.weaponPurchaseTiers), [1, 1, 1, 1, 1, 1]);
+    assert.deepEqual(player.weaponPurchaseTiers, purchasedTiers);
     assert.equal(player.ownsWeapon('Ghost'), true);
+    assert.equal(player.hasMissile, true);
+    assert.equal(player.missileLevel, 1);
+    assert.equal(player.equippedPrimaryGun, 'Laser');
     assert.equal(player.powerUpCapsules, 0);
     assert.equal(player.missileAmmo, 0);
+
+    player.resetTransientLifeState();
+    assert.deepEqual(player.weaponPurchaseTiers, purchasedTiers);
+    assert.equal(player.hasMissile, true);
+    assert.equal(player.missileLevel, 1);
+    assert.equal(player.equippedPrimaryGun, 'Laser');
+    assert.equal(player.activeGun, 'Laser');
+    assert.equal(player.weaponStreamCounts.Laser, 1);
+    assert.equal(player.missileAmmo, 0);
+    assert.equal(player.missileReloadTimer, 0);
+    assert.equal(player.missileShotTimer, 0);
+});
+
+test('every valid selected primary survives respawn while invalid state normalizes to Ballistic', () => {
+    const primaries = ['Ballistic', 'Antigun', 'Doublegun', 'Laser', 'Orb', 'Ghost'];
+    for (const weaponId of primaries) {
+        const player = new Player(0, 0, 1);
+        if (weaponId !== 'Ballistic') player.weaponPurchaseTiers[weaponId] = 1;
+        assert.equal(player.selectPrimaryWeapon(weaponId), true);
+        player.isDead = true;
+        const game = {
+            players: [player],
+            gameState: GAME_MODE.SOLO,
+            audio: { startGameplayMusic() {} }
+        };
+        Game.prototype.respawnPlayer.call(game, player);
+        assert.equal(player.equippedPrimaryGun, weaponId);
+    }
+
+    for (const invalidWeapon of ['Missile', 'Laser', 'legacy-value']) {
+        const player = new Player(0, 0, 1);
+        player.equippedPrimaryGun = invalidWeapon;
+        player.resetTransientLifeState();
+        assert.equal(player.equippedPrimaryGun, 'Ballistic');
+        assert.equal(player.activeGun, 'Normal');
+    }
+});
+
+test('fresh Player keeps Ballistic default and no purchased Missile acquisition', () => {
+    const player = new Player(0, 0, 1);
+    assert.equal(player.equippedPrimaryGun, 'Ballistic');
+    assert.equal(player.getWeaponPurchaseTier('Missile'), 0);
+    assert.equal(player.hasMissile, false);
+    player.resetTransientLifeState();
+    assert.equal(player.equippedPrimaryGun, 'Ballistic');
+    assert.equal(player.hasMissile, false);
 });

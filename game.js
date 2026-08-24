@@ -917,10 +917,14 @@ export class Game {
                 const point = this.getDesignPoint(e);
                 this.mouse.x = point.x;
                 this.mouse.y = point.y;
+                const shopWeapon = this.isShopMenuOpen
+                    ? this.hud.getPrimaryWeaponAt(point.x, point.y, this.players, this.gameState === 'PVP')
+                    : null;
                 const selection = this.isInGameplayState() && !this.isPauseMenuOpen
                     ? this.hud.getLevelUpgradeAt(this.mouse.x, this.mouse.y, this.players, this.gameState === 'PVP')
                     : null;
-                if (selection) selection.player.applyLevelUpgrade(selection.choice);
+                if (shopWeapon) Game.prototype.handleSector0ShopSelectionIntent.call(this, shopWeapon.weaponId);
+                else if (selection && !this.isShopMenuOpen) selection.player.applyLevelUpgrade(selection.choice);
                 else this.mouse.clicked = true;
             }
             if (e.button === 2 && !this.mouse.m2Held && e.target === this.canvas && this.isInGameplayState()
@@ -1310,9 +1314,6 @@ export class Game {
         document.querySelectorAll('[data-shop-weapon]').forEach(button => button.addEventListener('click', () => {
             Game.prototype.handleSector0ShopWeaponIntent.call(this, button.dataset.shopWeapon);
         }));
-        document.querySelectorAll('[data-shop-select-weapon]').forEach(button => button.addEventListener('click', () => {
-            Game.prototype.handleSector0ShopSelectionIntent.call(this, button.dataset.shopSelectWeapon);
-        }));
         document.getElementById('btn-sector-0-shop-back')?.addEventListener('click', () => {
             Game.prototype.closeSector0Shop.call(this);
         });
@@ -1437,12 +1438,6 @@ export class Game {
             button.disabled = !offer || offer.action === 'capped'
                 || (offer.action === 'purchase' && player.scrap < offer.price);
         });
-        document.querySelectorAll?.('[data-shop-select-weapon]').forEach(button => {
-            const weaponId = button.dataset.shopSelectWeapon;
-            const owned = weaponId === 'Ballistic' || player?.ownsWeapon?.(weaponId);
-            button.disabled = !owned;
-            button.classList.toggle('selected', player?.equippedPrimaryGun === weaponId);
-        });
     }
 
     resetMouseLockInput() {
@@ -1479,9 +1474,16 @@ export class Game {
     }
 
     handleTouchPointerDown(event) {
-        if (event.pointerType !== 'touch' || !this.canAcceptGameplayTouch()) return false;
-        this.audio?.unlock?.();
+        if (event.pointerType !== 'touch') return false;
         const point = this.getDesignPoint(event);
+        if (this.isShopMenuOpen) {
+            const shopWeapon = this.hud.getPrimaryWeaponAt(point.x, point.y, this.players, this.gameState === 'PVP');
+            return shopWeapon
+                ? Game.prototype.handleSector0ShopSelectionIntent.call(this, shopWeapon.weaponId)
+                : false;
+        }
+        if (!this.canAcceptGameplayTouch()) return false;
+        this.audio?.unlock?.();
         const levelUp = this.hud.getLevelUpgradeAt(point.x, point.y, this.players, this.gameState === 'PVP');
         if (levelUp) {
             levelUp.player.applyLevelUpgrade(levelUp.choice);
@@ -4623,10 +4625,9 @@ export class Game {
         player.history = []; // Clear history so ghosts don't snap back to old positions on respawn
         player.martianParallelGuns = 1;
         player.resetEvolutionForm();
-        // Shop purchases are Player-owned persistent progression. Rebuild only their
-        // runtime representation after clearing capsules, ammo, locks and forms.
-        player.syncPurchasedWeaponBonuses();
-        player.selectPrimaryWeapon(player.equippedPrimaryGun || 'Ballistic');
+        // Shop purchases and the selected primary are Player-owned persistent state.
+        // Rebuild only their runtime representation after clearing temporary combat state.
+        player.restorePurchasedWeaponLoadout();
 
         // Dying resets this ship's current kill streak AND best High Tide
         player.killStreak = 0;

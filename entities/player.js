@@ -216,6 +216,13 @@ export class Player {
         }));
     }
 
+    restorePurchasedWeaponLoadout() {
+        this.syncPurchasedWeaponBonuses();
+        if (!this.selectPrimaryWeapon(this.equippedPrimaryGun)) {
+            this.selectPrimaryWeapon('Ballistic');
+        }
+    }
+
     purchaseWeaponTier(weaponId) {
         if (!SHOP_WEAPON_IDS.includes(weaponId)) return false;
         const previousMissileCapacity = this.getMissileCapacity();
@@ -408,6 +415,7 @@ export class Player {
         this.resetEvolutionForm();
         this.bonusSpeed = 0;
         this.restoreShieldCharges(this.maxShieldCharges);
+        this.restorePurchasedWeaponLoadout();
     }
 
     startExperimentalRespawnPhase(x = this.x, y = this.y) {
