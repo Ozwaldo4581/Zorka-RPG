@@ -158,6 +158,80 @@ test('Adventure minimap projects connected room and hallway topology in world sp
   }));
 });
 
+test('Sector 1 nook is a small 2:1 dead end with an open room-facing mouth', () => {
+  const [room] = createExperimentalAreas(EXPERIMENTAL_ROOM_WIDTH, EXPERIMENTAL_ROOM_HEIGHT);
+  const nookWalls = room.walls.filter(wall => wall.id.includes('-interior-left-nook-'));
+  const wallBySuffix = suffix => nookWalls.find(wall => wall.id.endsWith(suffix));
+  const top = wallBySuffix('-top');
+  const bottom = wallBySuffix('-bottom');
+  const deadEnd = wallBySuffix('-dead-end');
+
+  assert.equal(EXPERIMENTAL_SECTOR_1_NOOK_WIDTH, EXPERIMENTAL_HALLWAY_WIDTH / 2);
+  assert.equal(EXPERIMENTAL_SECTOR_1_NOOK_DEPTH, EXPERIMENTAL_SECTOR_1_NOOK_WIDTH * 2);
+  assert.equal(nookWalls.length, 3);
+  assert.ok(nookWalls.every(wall => wall.isTwoSided));
+  assert.equal(bottom.start.y - top.start.y, EXPERIMENTAL_SECTOR_1_NOOK_WIDTH);
+  assert.equal(top.end.x - top.start.x, EXPERIMENTAL_SECTOR_1_NOOK_DEPTH);
+  assert.equal(bottom.start.x - bottom.end.x, EXPERIMENTAL_SECTOR_1_NOOK_DEPTH);
+  assert.deepEqual(deadEnd.start, { x: room.bounds.left, y: bottom.start.y });
+  assert.deepEqual(deadEnd.end, { x: room.bounds.left, y: top.start.y });
+  assert.equal(nookWalls.some(wall => wall.start.x === top.end.x && wall.end.x === top.end.x), false);
+  assert.deepEqual(room.entrances, []);
+  assert.equal(createExperimentalDoors([room]).length, 0);
+});
+
+test('Sector 1 nook walls use shared swept collision while its mouth remains passable', () => {
+  const areas = createExperimentalAreas(EXPERIMENTAL_ROOM_WIDTH, EXPERIMENTAL_ROOM_HEIGHT);
+  const room = areas[0];
+  const centerY = (room.bounds.top + room.bounds.bottom) / 2;
+  const mouthX = room.bounds.left + EXPERIMENTAL_SECTOR_1_NOOK_DEPTH;
+  const game = {
+    experimentalRooms: areas,
+    experimentalDoors: [],
+    experimentalWallSpatialIndexes: createExperimentalWallSpatialIndexes(areas)
+  };
+  const move = (previousX, previousY, x, y) => {
+    const player = new Player(x, y, 1);
+    player.roomId = room.id;
+    player.previousX = previousX;
+    player.previousY = previousY;
+    player.velocityX = x - previousX;
+    player.velocityY = y - previousY;
+    const collided = Game.prototype.resolveExperimentalSlide.call(game, player);
+    return { player, collided };
+  };
+
+  assert.equal(move(mouthX + 100, centerY, mouthX - 100, centerY).collided, false);
+  assert.equal(move(mouthX - 100, centerY, mouthX + 100, centerY).collided, false);
+  assert.equal(move(mouthX - 100, centerY, mouthX - 100, centerY - EXPERIMENTAL_SECTOR_1_NOOK_WIDTH).collided, true);
+  assert.equal(move(mouthX - 100, centerY, mouthX - 100, centerY + EXPERIMENTAL_SECTOR_1_NOOK_WIDTH).collided, true);
+  const deadEndHit = move(mouthX - 100, centerY, room.bounds.left - 500, centerY);
+  assert.equal(deadEndHit.collided, true);
+  assert.ok(deadEndHit.player.x > room.bounds.left);
+});
+
+test('Adventure minimap projects the nook from authoritative interior walls', () => {
+  const [room] = createExperimentalAreas(EXPERIMENTAL_ROOM_WIDTH, EXPERIMENTAL_ROOM_HEIGHT);
+  const owner = { id: 1, x: EXPERIMENTAL_ROOM_WIDTH / 2, y: EXPERIMENTAL_ROOM_HEIGHT / 2, roomId: room.id };
+  const segments = [];
+  let start = null;
+  const ctx = {
+    fillStyle: '', strokeStyle: '', lineWidth: 0,
+    fillRect() {}, strokeRect() {}, beginPath() { start = null; }, stroke() {}, fill() {}, arc() {},
+    moveTo(x, y) { start = { x, y }; },
+    lineTo(x, y) { segments.push({ start, end: { x, y } }); }
+  };
+
+  HUD.prototype.drawMinimap.call({}, ctx, [owner], [], {}, false, {
+    usesRooms: true, owner, rooms: [room], hazards: []
+  });
+
+  const nookSegments = segments.slice(-3);
+  assert.equal(nookSegments.length, 3);
+  assert.deepEqual(nookSegments.map(segment => segment.start.x), [1580, 1628, 1580]);
+  assert.deepEqual(nookSegments.map(segment => segment.end.x), [1628, 1580, 1580]);
+});
+
 test('Adventure NPC death reconciles the canonical population to one', () => {
   const human = new Player(100, 100, 1);
   const npc = new Player(200, 200, 2); npc.isNPC = true; npc.isOrdinaryExperimentalNPC = true; npc.roomId = 'experimental-room-1';
