@@ -4625,10 +4625,9 @@ export class Game {
         player.history = []; // Clear history so ghosts don't snap back to old positions on respawn
         player.martianParallelGuns = 1;
         player.resetEvolutionForm();
-        // Shop purchases are Player-owned persistent progression. Rebuild only their
-        // runtime representation after clearing capsules, ammo, locks and forms.
-        player.syncPurchasedWeaponBonuses();
-        player.selectPrimaryWeapon(player.equippedPrimaryGun || 'Ballistic');
+        // Shop purchases and the selected primary are Player-owned persistent state.
+        // Rebuild only their runtime representation after clearing temporary combat state.
+        player.restorePurchasedWeaponLoadout();
 
         // Dying resets this ship's current kill streak AND best High Tide
         player.killStreak = 0;
