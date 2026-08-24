@@ -71,7 +71,7 @@ Keep these familiar asset locations stable unless asset migration is explicitly 
 - Ballistic is the Base Gun, Double, and Antigun family; Laser, Orb, and Missile are separate families while `Projectile` remains the generic runtime entity.
 - Fire rate is emission frequency, shot interval is seconds between events, and reload is the empty-clip refill duration. Ballistic uses one-third of the former 0.75-second interval, Laser remains 0.75 seconds, Orb uses 1.25 seconds, and Missile independently uses 0.375 seconds (2× Laser's current rate).
 - Player owns the manual Missile clip. Each Missile capsule adds one round up to 12, an empty clip reloads in a fixed 12 seconds, and keyboard/mouse Player 1 fires with E. No automatic missile firing or new controller binding.
-- Ballistic and Orb projectiles use only their owner's valid live lock at the shared 0.3 missile homing strength.
+- Ballistic, Laser, and Orb projectiles use only their owner's valid live lock at the shared 0.3 missile homing strength.
 - Held primary fire discharges the clip at the established cadence without burst grouping.
 - Adventure is playable, while shared runtime behavior remains in the shared owners rather than menu/rendering code.
 

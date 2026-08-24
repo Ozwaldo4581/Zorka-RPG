@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { Player } from '../entities/player.js';
-import { Game, GAME_MODE, SECTOR_0_WEAPON_CATALOG, getNPCCapsuleRewardCount } from '../game.js';
+import { Game, GAME_MODE, SECTOR_0_WEAPON_CATALOG, SPACE_BAR_ROUND_PRICE, getNPCCapsuleRewardCount } from '../game.js';
 import { createExperimentalAreas, isSector0ShopArea, EXPERIMENTAL_AREA_ROLE } from '../world/experimental_rooms.js';
 
 const areas = createExperimentalAreas(9600, 5400);
@@ -73,13 +73,13 @@ test('NPC capsule reward is level minus three and clamps low levels', () => {
     assert.deepEqual([1, 2, 3, 4, 5, 10].map(getNPCCapsuleRewardCount), [0, 0, 0, 1, 2, 7]);
 });
 
-test('Buy A Round atomically spends Scrap and advances level, target, and price', () => {
+test('Buy A Round atomically advances encounter level and keeps its flat price', () => {
     const player = new Player(0, 0, 1);
     const spaceBar = areas.find(area => area.role === EXPERIMENTAL_AREA_ROLE.SPACE_BAR);
     player.roomId = spaceBar.id;
     player.experimentalLastCombatRoomId = room.id;
     player.scrap = 999;
-    const encounter = { npcCount: 1 };
+    const encounter = { npcLevel: 1 };
     const game = {
         ...shopGame(player), activeSector0Shop: 'SPACE_BAR',
         experimentalEncounterStates: new Map([[room.id, encounter]]),
@@ -88,14 +88,85 @@ test('Buy A Round atomically spends Scrap and advances level, target, and price'
     const reconcile = Game.prototype.reconcileExperimentalOrdinaryNPCPopulation;
     Game.prototype.reconcileExperimentalOrdinaryNPCPopulation = function () { this.reconciled = (this.reconciled || 0) + 1; };
     assert.equal(Game.prototype.handleSpaceBarRoundIntent.call(game), false);
-    assert.deepEqual([player.scrap, player.level, encounter.npcCount], [999, 0, 1]);
-    player.scrap = 6000;
+    assert.deepEqual([player.scrap, encounter.npcLevel], [999, 1]);
+    player.scrap = 2000;
     assert.equal(Game.prototype.handleSpaceBarRoundIntent.call(game), true);
-    assert.equal(Game.prototype.handleSpaceBarRoundIntent.call(game), true);
+    assert.deepEqual([player.scrap, encounter.npcLevel, game.reconciled], [1000, 2, 1]);
+    assert.equal(Game.prototype.getSpaceBarRoundOffer.call(game, player).price, SPACE_BAR_ROUND_PRICE);
     assert.equal(Game.prototype.handleSpaceBarRoundIntent.call(game), true);
     Game.prototype.reconcileExperimentalOrdinaryNPCPopulation = reconcile;
-    assert.deepEqual([player.scrap, player.level, encounter.npcCount, game.reconciled], [0, 3, 4, 3]);
-    assert.equal(Game.prototype.getSpaceBarRoundOffer.call(game, player).price, 4000);
+    assert.deepEqual([player.scrap, encounter.npcLevel, game.reconciled], [0, 3, 2]);
+    assert.equal(Game.prototype.getSpaceBarRoundOffer.call(game, player).price, SPACE_BAR_ROUND_PRICE);
+});
+
+test('encounter level derives ordinary NPC target and re-levels survivors while excluding Wisps', () => {
+    const roomId = room.id;
+    const ordinary = Object.assign(new Player(0, 0, 2), {
+        isNPC: true, isOrdinaryExperimentalNPC: true, roomId
+    });
+    ordinary.initializeNPCLevel(1, () => 0);
+    const wisp = Object.assign(new Player(0, 0, 3), {
+        isNPC: true, isOrdinaryExperimentalNPC: true, isWisp: true, roomId
+    });
+    const game = {
+        gameState: GAME_MODE.EXPERIMENTAL,
+        players: [ordinary, wisp],
+        experimentalRooms: [room],
+        experimentalEncounterStates: new Map([[roomId, { npcLevel: 2 }]]),
+        spawnOrdinaryExperimentalRoomNPCs(_roomId, _players, count) { this.spawned = count; }
+    };
+    assert.equal(Game.prototype.reconcileExperimentalOrdinaryNPCPopulation.call(game, roomId), 1);
+    assert.equal(ordinary.level, 2);
+    assert.equal(game.spawned, 1);
+    assert.equal(wisp.level, 0);
+});
+
+test('player-death world rebuild preserves purchased encounter progression but a fresh run starts at level one', () => {
+    const roomId = room.id;
+    const human = Object.assign(new Player(0, 0, 1), { experimentalWorldResetPending: true });
+    const initializeWorldState = Game.prototype.initializeExperimentalWorldState;
+    Game.prototype.initializeExperimentalWorldState = function () {
+        const baselineNPC = Object.assign(new Player(0, 0, 2), {
+            isNPC: true, isOrdinaryExperimentalNPC: true, roomId
+        });
+        baselineNPC.initializeNPCLevel(1, () => 0);
+        const wisp = Object.assign(new Player(0, 0, 3), {
+            isNPC: true, isOrdinaryExperimentalNPC: true, isWisp: true, roomId
+        });
+        this.players = [human, baselineNPC, wisp];
+        this.experimentalRooms = [room];
+        this.experimentalEncounterStates = new Map([[roomId, { npcLevel: 1 }]]);
+    };
+
+    for (const purchasedLevel of [2, 3]) {
+        let nextId = 10;
+        const game = {
+            gameState: GAME_MODE.EXPERIMENTAL,
+            players: [human],
+            experimentalRooms: [room],
+            experimentalEncounterStates: new Map([[roomId, { npcLevel: purchasedLevel }]]),
+            spawnOrdinaryExperimentalRoomNPCs(id, placed, count) {
+                for (let index = 0; index < count; index++) {
+                    const npc = Object.assign(new Player(0, 0, nextId++), {
+                        isNPC: true, isOrdinaryExperimentalNPC: true, roomId: id
+                    });
+                    npc.initializeNPCLevel(this.experimentalEncounterStates.get(id).npcLevel, () => 0);
+                    placed.push(npc);
+                }
+            }
+        };
+        assert.equal(Game.prototype.resetExperimentalWorldLoop.call(game, human), true);
+        const ordinary = game.players.filter(candidate => candidate.isNPC && !candidate.isWisp);
+        assert.equal(game.experimentalEncounterStates.get(roomId).npcLevel, purchasedLevel);
+        assert.equal(ordinary.length, purchasedLevel);
+        assert.ok(ordinary.every(candidate => candidate.level === purchasedLevel));
+        assert.equal(game.players.filter(candidate => candidate.isWisp).length, 1);
+    }
+    Game.prototype.initializeExperimentalWorldState = initializeWorldState;
+
+    const freshGame = { experimentalRooms: areas, experimentalDoors: [] };
+    Game.prototype.initializeExperimentalEncounterStates.call(freshGame);
+    assert.equal(freshGame.experimentalEncounterStates.get(roomId).npcLevel, 1);
 });
 
 test('catalog order, fixed prices, and mathematical Missile prices are authoritative', () => {
