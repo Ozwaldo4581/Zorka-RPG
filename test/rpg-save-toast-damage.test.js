@@ -11,12 +11,18 @@ const memoryStorage = () => {
     return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, value) };
 };
 
-test('four named save slots normalize, remain isolated, load RPG state, and delete', () => {
+test('five named save slots normalize, remain isolated, load RPG state, and delete', () => {
     const store = new ExperimentalProfileStore(memoryStorage());
-    assert.equal(EXPERIMENTAL_PROFILE_SLOT_COUNT, 4);
-    assert.deepEqual(store.getSummaries(), [null, null, null, null]);
+    assert.equal(EXPERIMENTAL_PROFILE_SLOT_COUNT, 5);
+    assert.deepEqual(store.getSummaries(), [null, null, null, null, null]);
     store.createProfile(0, 'Nova');
     store.createProfile(1, 'Sol');
+    store.createProfile(4, 'Quasar');
+    assert.equal(store.getProfile(4).name, 'Quasar');
+    assert.throws(() => store.getProfile(5), {
+        name: 'RangeError',
+        message: 'Adventure save slot must be between 0 and 4.'
+    });
     store.updateProfile(0, { level: 3, encounterLevel: 3, scrap: 750, deaths: 2,
         equippedPrimaryGun: 'Laser', weaponPurchaseTiers: { Laser: 1 },
         purchasedUtilities: { Boost: true }, shipUpgrades: { projectile: 2, maxSpeed: 1 } });
@@ -30,6 +36,7 @@ test('four named save slots normalize, remain isolated, load RPG state, and dele
     assert.deepEqual([player.shipUpgrades.projectile, player.shipUpgrades.maxSpeed], [2, 1]);
     store.deleteProfile(0);
     assert.equal(store.getProfile(0), null);
+    assert.equal(store.getProfile(4).name, 'Quasar');
 });
 
 test('player-owned floating text follows movement and expires', () => {
