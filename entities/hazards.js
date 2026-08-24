@@ -1,6 +1,7 @@
 import { updateNewtonian } from '../physics.js';
 import { Projectile } from './projectile.js';
 import { WORLD_WIDTH, WORLD_HEIGHT } from '../world_config.js';
+import { isVisibleForLifetimeWarning } from './lifetime_warning.js';
 
 export class SpaceDebris {
     constructor(x, y) {
@@ -38,12 +39,7 @@ export class SpaceDebris {
     }
 
     isVisibleForLifetimeWarning() {
-        const remaining = this.getRemainingLifetime();
-        if (remaining <= 0) return false;
-        if (remaining > 3) return true;
-        const frequencyMultiplier = remaining <= 0.5 ? 3 : remaining <= 1.5 ? 2 : 1;
-        const baseFrequency = 4;
-        return Math.floor(this.age * baseFrequency * frequencyMultiplier * 2) % 2 === 0;
+        return isVisibleForLifetimeWarning(this.age, this.getRemainingLifetime());
     }
 
     draw(ctx, assets, camera) {

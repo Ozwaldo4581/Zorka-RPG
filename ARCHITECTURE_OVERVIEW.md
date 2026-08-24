@@ -4,7 +4,7 @@
 
 Zorka RPG is a local-first Newtonian shooter built with plain ES modules and Vite. **Adventure Mode is the sole supported gameplay route; Options is the sole supported configuration route.** The menu artwork for Arcade, Arena, and Local PvP remains visible but disabled and unreachable.
 
-Adventure retains the legacy internal `EXPERIMENTAL` discriminator and method names to avoid an unrelated broad rename. Its immutable topology is owned by `world/experimental_rooms.js` and contains Sector 1 at its established 9600 × 5400 dimensions plus four terminal Sector 0 areas: Weapons on the left, Utility above, Ship Modification on the right, and The Space Bar below. Each is a real connected area with a bidirectional entrance and solid dead end; semantic roles route the three Shop menus while The Space Bar remains an explicit interaction stub without duplicating bounds in gameplay or presentation code.
+Adventure retains the legacy internal `EXPERIMENTAL` discriminator and method names to avoid an unrelated broad rename. Its immutable topology is owned by `world/experimental_rooms.js` and contains Sector 1 at its established 9600 × 5400 dimensions plus four terminal Sector 0 areas: Weapons on the left, Utility above, Ship Modification on the right, and The Space Bar below. Each is a real connected area with a bidirectional entrance and solid dead end; semantic roles route all four menus without duplicating bounds in gameplay or presentation code. The Space Bar spends Scrap to advance the human RPG level and the authoritative ordinary-NPC encounter target together.
 
 ## Ownership
 

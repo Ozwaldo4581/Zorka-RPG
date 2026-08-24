@@ -188,7 +188,8 @@ test('Adventure NPC death reconciles the canonical population to one', () => {
   const npc = new Player(200, 200, 2); npc.isNPC = true; npc.isOrdinaryExperimentalNPC = true; npc.roomId = 'experimental-room-1';
   const game = {
     gameState: GAME_MODE.EXPERIMENTAL, players: [human, npc], experimentalAreaIndexes: new Map(),
-    getExperimentalRoom: () => ({ id: npc.roomId, roomNumber: 1 }),
+    experimentalRooms: [{ id: npc.roomId, roomNumber: 1 }],
+    experimentalEncounterStates: new Map([[npc.roomId, { npcCount: 1 }]]),
     spawnOrdinaryExperimentalRoomNPCs(roomId, placed, count) { const replacement = new Player(300, 300, 3); replacement.isNPC = true; replacement.isOrdinaryExperimentalNPC = true; replacement.roomId = roomId; this.players.push(replacement); return [replacement]; }
   };
   game.experimentalAreaIndexes.set(npc.roomId, { players: new Set([npc]) });

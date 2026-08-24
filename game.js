@@ -62,6 +62,10 @@ export const SECTOR_0_WEAPON_CATALOG = Object.freeze([
 // Compatibility export retained for integrations that import the old name.
 export const SECTOR_0_SHOP_PRICES = SECTOR_0_WEAPON_CATALOG;
 
+export function getNPCCapsuleRewardCount(npcLevel) {
+    return Math.max(0, Math.floor(Number(npcLevel) || 0) - 3);
+}
+
 export function getExperimentalNPCCapsuleBudget(npcLevel, roomNumber) {
     return Math.max(1, Math.floor(Number(npcLevel) || 1))
         + Math.max(0, Math.floor(Number(roomNumber) || 0));
@@ -1314,6 +1318,10 @@ export class Game {
         document.querySelectorAll('[data-shop-weapon]').forEach(button => button.addEventListener('click', () => {
             Game.prototype.handleSector0ShopWeaponIntent.call(this, button.dataset.shopWeapon);
         }));
+        document.getElementById('btn-buy-round')?.addEventListener('click', event => {
+            event.stopPropagation();
+            Game.prototype.handleSpaceBarRoundIntent.call(this);
+        });
         document.getElementById('btn-sector-0-shop-back')?.addEventListener('click', () => {
             Game.prototype.closeSector0Shop.call(this);
         });
@@ -1386,11 +1394,11 @@ export class Game {
     handleSector0Interaction() {
         const area = Game.prototype.getHumanSector0InteractionArea.call(this);
         if (!area || this.isShopMenuOpen || this.isPauseMenuOpen || this.activeModal || this.optionsOpenedFromPause) return false;
-        if (area.interaction === 'SPACE_BAR_STUB') return true;
         const menuId = {
             WEAPONS_SHOP: 'sector-0-shop-menu',
             UTILITY_SHOP: 'utility-shop-menu',
-            SHIP_MODIFICATION: 'ship-modification-menu'
+            SHIP_MODIFICATION: 'ship-modification-menu',
+            SPACE_BAR: 'space-bar-menu'
         }[area.interaction];
         return menuId ? Game.prototype.openSector0Shop.call(this, area.interaction, menuId) : false;
     }
@@ -1406,6 +1414,7 @@ export class Game {
         const menu = document.getElementById(menuId);
         menu?.classList.remove('hidden');
         if (shopType === 'WEAPONS_SHOP') Game.prototype.refreshSector0ShopMenu.call(this);
+        if (shopType === 'SPACE_BAR') Game.prototype.refreshSpaceBarMenu.call(this);
         this.setInitialMenuFocus?.(menu);
         return true;
     }
@@ -1464,6 +1473,43 @@ export class Game {
             button.disabled = !offer || offer.action === 'capped'
                 || (offer.action === 'purchase' && player.scrap < offer.price);
         });
+    }
+
+    getSpaceBarRoundOffer(player = Game.prototype.getHumanPlayer.call(this)) {
+        const room = Game.prototype.getExperimentalRoom.call(this, player?.experimentalLastCombatRoomId || 'experimental-room-1');
+        const encounter = Game.prototype.getExperimentalEncounterState.call(this, room?.id);
+        if (!player || !room || !encounter) return null;
+        const roundsBought = Math.max(0, encounter.npcCount - room.npcCount);
+        return { room, encounter, price: (roundsBought + 1) * 1000 };
+    }
+
+    handleSpaceBarRoundIntent() {
+        const player = Game.prototype.getHumanPlayer.call(this);
+        const area = Game.prototype.getHumanSector0InteractionArea.call(this);
+        if (!this.isShopMenuOpen || this.activeSector0Shop !== 'SPACE_BAR' || area?.interaction !== 'SPACE_BAR') return false;
+        const offer = Game.prototype.getSpaceBarRoundOffer.call(this, player);
+        if (!offer || player.scrap < offer.price) return false;
+        player.scrap -= offer.price;
+        player.level++;
+        player.increaseMaxHP();
+        player.increaseMaxShields();
+        player.pendingLevelUps++;
+        offer.encounter.npcCount++;
+        Game.prototype.reconcileExperimentalOrdinaryNPCPopulation.call(this, offer.room.id);
+        Game.prototype.refreshSpaceBarMenu.call(this);
+        return true;
+    }
+
+    refreshSpaceBarMenu() {
+        if (typeof document === 'undefined') return;
+        const player = Game.prototype.getHumanPlayer.call(this);
+        const offer = Game.prototype.getSpaceBarRoundOffer.call(this, player);
+        const balance = document.getElementById('space-bar-balance');
+        const price = document.getElementById('space-bar-round-price');
+        const button = document.getElementById('btn-buy-round');
+        if (balance) balance.textContent = `Scrap - ${player?.scrap || 0}`;
+        if (price) price.textContent = offer ? offer.price.toLocaleString('en-US') : '—';
+        if (button) button.disabled = !offer || player.scrap < offer.price;
     }
 
     resetMouseLockInput() {
@@ -2389,6 +2435,7 @@ export class Game {
             npc.roomId = room.id;
             npc.isOrdinaryExperimentalNPC = true;
             npc.isExperimentalFleeingNPC = isSpecter;
+            if (isSpecter) npc.configureWispLifetime();
             npc.noRespawn = true;
             if (typeof this.configurePlayerShields === 'function') this.configurePlayerShields(npc);
             if (this.botAggressionLevel > 0) {
@@ -2435,6 +2482,7 @@ export class Game {
             npc.isOrdinaryExperimentalNPC = true;
             npc.isExperimentalFleeingNPC = true;
             npc.isExperimentalSpawnSpecter = true;
+            npc.configureWispLifetime();
             npc.noRespawn = true;
             if (typeof this.configurePlayerShields === 'function') this.configurePlayerShields(npc);
             if (this.botAggressionLevel > 0) {
@@ -2462,7 +2510,7 @@ export class Game {
 
     isLivingOrdinaryExperimentalRoomEnemy(player, roomId = player?.roomId) {
         return this.gameState === GAME_MODE.EXPERIMENTAL && player instanceof Player && player.isNPC
-            && player.isOrdinaryExperimentalNPC === true && player.roomId === roomId
+            && player.isOrdinaryExperimentalNPC === true && !player.isWisp && player.roomId === roomId
             && !player.isDead && !player.isEliminated;
     }
 
@@ -2479,11 +2527,33 @@ export class Game {
         Game.prototype.unindexExperimentalEntity.call(this, 'players', deadNPC);
         const deadIndex = this.players.indexOf(deadNPC);
         if (deadIndex !== -1) this.players.splice(deadIndex, 1);
+        Game.prototype.reconcileExperimentalOrdinaryNPCPopulation.call(this, roomId);
+        return true;
+    }
+
+    reconcileExperimentalOrdinaryNPCPopulation(roomId) {
+        const room = Game.prototype.getExperimentalRoom.call(this, roomId);
+        const encounter = Game.prototype.getExperimentalEncounterState.call(this, roomId);
+        if (!room || !encounter) return 0;
         const living = this.players.filter(player =>
             Game.prototype.isLivingOrdinaryExperimentalRoomEnemy.call(this, player, roomId)
         ).length;
-        if (living < 1) this.spawnOrdinaryExperimentalRoomNPCs(roomId, this.players, 1, 'ORDINARY');
-        return true;
+        const missing = Math.max(0, encounter.npcCount - living);
+        if (missing) this.spawnOrdinaryExperimentalRoomNPCs(roomId, this.players, missing, 'ORDINARY');
+        return missing;
+    }
+
+    removeExpiredWisps() {
+        let removed = 0;
+        for (const wisp of [...this.players]) {
+            if (!wisp?.isWisp || wisp.wispAge < wisp.wispLifeSpan) continue;
+            Game.prototype.unindexExperimentalEntity.call(this, 'players', wisp);
+            const index = this.players.indexOf(wisp);
+            if (index !== -1) this.players.splice(index, 1);
+            this.clearAimLocksForTarget?.(wisp);
+            removed++;
+        }
+        return removed;
     }
 
     resetExperimentalRoomEncounter(roomId) {
@@ -2765,6 +2835,10 @@ export class Game {
             ctx.shadowBlur = 12;
             ctx.font = 'bold 34px Orbitron';
             ctx.fillText(area.displayText, 0, 0);
+            if (area.detailText) {
+                ctx.font = 'bold 20px Orbitron';
+                ctx.fillText(area.detailText, 0, 38);
+            }
             ctx.restore();
         }
         ctx.save();
@@ -3638,6 +3712,7 @@ export class Game {
             : this.hazards;
 
         for (let player of this.players) {
+            if (player.advanceWispLifetime?.(dt)) continue;
             if (player.isEliminated) continue; // Skip eliminated players completely
             if (player.isNPC && worldRules.usesRooms
                 && !activeExperimentalAreaIds.has(player.roomId)) {
@@ -3794,6 +3869,8 @@ export class Game {
                 }
             }
         }
+
+        Game.prototype.removeExpiredWisps.call(this);
 
         for (const prestigePlayer of prestigeTriggers) {
             this.applyPrestigeShieldPulse(prestigePlayer);
@@ -4639,9 +4716,11 @@ export class Game {
                     if (Math.random() < 0.5) debrisCount++;
                 }
                 Game.prototype.spawnDebrisBurst.call(this, player.x, player.y, player.roomId, debrisCount);
-            } else {
-                killer.addCapsule();
             }
+            if (player.isNPC) {
+                const capsuleCount = getNPCCapsuleRewardCount(player.level);
+                for (let count = 0; count < capsuleCount; count++) killer.addCapsule();
+            } else killer.addCapsule();
             killer.score = (killer.score || 0) + 1;
             killer.killStreak = (killer.killStreak || 0) + 1;
             if (killer.killStreak > (killer.highTide || 0)) killer.highTide = killer.killStreak;

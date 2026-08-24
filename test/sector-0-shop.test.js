@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { Player } from '../entities/player.js';
-import { Game, GAME_MODE, SECTOR_0_WEAPON_CATALOG } from '../game.js';
+import { Game, GAME_MODE, SECTOR_0_WEAPON_CATALOG, getNPCCapsuleRewardCount } from '../game.js';
 import { createExperimentalAreas, isSector0ShopArea, EXPERIMENTAL_AREA_ROLE } from '../world/experimental_rooms.js';
 
 const areas = createExperimentalAreas(9600, 5400);
@@ -24,7 +24,9 @@ test('Shop DOM keeps purchase rows and Back but has no duplicate primary selecto
         'Increase Hull Recovery Rate', 'Increase Fire Rate', 'Increase Reload Speed', 'Increase Acceleration']) {
         assert.match(html, new RegExp(text));
     }
-    assert.equal((html.match(/data-stub-shop-back/g) || []).length, 2);
+    assert.equal((html.match(/data-stub-shop-back/g) || []).length, 3);
+    assert.equal((html.match(/id="btn-buy-round"/g) || []).length, 1);
+    assert.match(html, /1,000<\/span><button id="btn-buy-round"[^>]*>Buy A Round/);
 });
 
 test('Sector 0 exposes four semantic interaction areas while Weapons keeps purchase eligibility', () => {
@@ -32,7 +34,7 @@ test('Sector 0 exposes four semantic interaction areas while Weapons keeps purch
         [EXPERIMENTAL_AREA_ROLE.WEAPONS_SHOP, 'Purchase Weapons', 'WEAPONS_SHOP'],
         [EXPERIMENTAL_AREA_ROLE.UTILITY_SHOP, 'Purchase Utility', 'UTILITY_SHOP'],
         [EXPERIMENTAL_AREA_ROLE.SHIP_MODIFICATION, 'Modify Ship', 'SHIP_MODIFICATION'],
-        [EXPERIMENTAL_AREA_ROLE.SPACE_BAR, 'The Space Bar', 'SPACE_BAR_STUB']
+        [EXPERIMENTAL_AREA_ROLE.SPACE_BAR, 'Buy a Round for the Bar', 'SPACE_BAR']
     ]);
     const player = new Player(0, 0, 1);
     const game = shopGame(player);
@@ -49,7 +51,7 @@ test('Sector 0 exposes four semantic interaction areas while Weapons keeps purch
     assert.ok(room.connectedAreaIds.includes(shop.id));
 });
 
-test('Space dispatch derives from area membership and keeps The Space Bar a no-op stub', () => {
+test('Space dispatch derives from area membership and opens The Space Bar menu', () => {
     const player = new Player(0, 0, 1);
     const game = { ...shopGame(player), isShopMenuOpen: false, isPauseMenuOpen: false, activeModal: null, optionsOpenedFromPause: false };
     for (const role of [EXPERIMENTAL_AREA_ROLE.WEAPONS_SHOP, EXPERIMENTAL_AREA_ROLE.UTILITY_SHOP,
@@ -60,10 +62,40 @@ test('Space dispatch derives from area membership and keeps The Space Bar a no-o
     }
     const spaceBar = areas.find(area => area.role === EXPERIMENTAL_AREA_ROLE.SPACE_BAR);
     player.roomId = spaceBar.id;
-    const scrap = player.scrap;
+    globalThis.document = { querySelectorAll: () => [], getElementById: () => null };
     assert.equal(Game.prototype.handleSector0Interaction.call(game), true);
-    assert.equal(game.isShopMenuOpen, false);
-    assert.equal(player.scrap, scrap);
+    delete globalThis.document;
+    assert.equal(game.isShopMenuOpen, true);
+    assert.equal(game.activeSector0Shop, 'SPACE_BAR');
+});
+
+test('NPC capsule reward is level minus three and clamps low levels', () => {
+    assert.deepEqual([1, 2, 3, 4, 5, 10].map(getNPCCapsuleRewardCount), [0, 0, 0, 1, 2, 7]);
+});
+
+test('Buy A Round atomically spends Scrap and advances level, target, and price', () => {
+    const player = new Player(0, 0, 1);
+    const spaceBar = areas.find(area => area.role === EXPERIMENTAL_AREA_ROLE.SPACE_BAR);
+    player.roomId = spaceBar.id;
+    player.experimentalLastCombatRoomId = room.id;
+    player.scrap = 999;
+    const encounter = { npcCount: 1 };
+    const game = {
+        ...shopGame(player), activeSector0Shop: 'SPACE_BAR',
+        experimentalEncounterStates: new Map([[room.id, encounter]]),
+        reconcileExperimentalOrdinaryNPCPopulation() { this.reconciled = (this.reconciled || 0) + 1; }
+    };
+    const reconcile = Game.prototype.reconcileExperimentalOrdinaryNPCPopulation;
+    Game.prototype.reconcileExperimentalOrdinaryNPCPopulation = function () { this.reconciled = (this.reconciled || 0) + 1; };
+    assert.equal(Game.prototype.handleSpaceBarRoundIntent.call(game), false);
+    assert.deepEqual([player.scrap, player.level, encounter.npcCount], [999, 0, 1]);
+    player.scrap = 6000;
+    assert.equal(Game.prototype.handleSpaceBarRoundIntent.call(game), true);
+    assert.equal(Game.prototype.handleSpaceBarRoundIntent.call(game), true);
+    assert.equal(Game.prototype.handleSpaceBarRoundIntent.call(game), true);
+    Game.prototype.reconcileExperimentalOrdinaryNPCPopulation = reconcile;
+    assert.deepEqual([player.scrap, player.level, encounter.npcCount, game.reconciled], [0, 3, 4, 3]);
+    assert.equal(Game.prototype.getSpaceBarRoundOffer.call(game, player).price, 4000);
 });
 
 test('catalog order, fixed prices, and mathematical Missile prices are authoritative', () => {

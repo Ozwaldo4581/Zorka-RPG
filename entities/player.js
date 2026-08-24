@@ -1,6 +1,7 @@
 import { updateNewtonian, checkCollision, nearestWrappedDisplacement, closestPointOnSegment } from '../physics.js';
 import { Projectile } from './projectile.js';
 import { DESIGN_WIDTH, DESIGN_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT } from '../world_config.js';
+import { isVisibleForLifetimeWarning } from './lifetime_warning.js';
 
 export const PREVIOUS_BALLISTIC_SHOT_INTERVAL = 0.75;
 export const BALLISTIC_SHOT_INTERVAL = PREVIOUS_BALLISTIC_SHOT_INTERVAL / 3;
@@ -65,6 +66,9 @@ export class Player {
         this.isNPC = false;
         this.isExperimentalFleeingNPC = false;
         this.isExperimentalSpawnSpecter = false;
+        this.isWisp = false;
+        this.wispLifeSpan = 0;
+        this.wispAge = 0;
         this.experimentalSpecterRecovering = false;
         this.experimentalSpecterRecoveryTarget = null;
         this.experimentalSpecterWanderTimer = 0;
@@ -170,6 +174,28 @@ export class Player {
         const gained = Math.max(0, Math.floor(Number(amount) || 0));
         this.scrap += gained;
         return gained;
+    }
+
+    configureWispLifetime(random = Math.random) {
+        if (this.isWisp && this.wispLifeSpan > 0) return this.wispLifeSpan;
+        this.isWisp = true;
+        this.wispLifeSpan = 45 + random() * 30;
+        this.wispAge = 0;
+        return this.wispLifeSpan;
+    }
+
+    advanceWispLifetime(dt) {
+        if (!this.isWisp || this.wispLifeSpan <= 0) return false;
+        this.wispAge = Math.min(this.wispLifeSpan, this.wispAge + Math.max(0, Number(dt) || 0));
+        return this.wispAge >= this.wispLifeSpan;
+    }
+
+    getWispRemainingLifetime() {
+        return Math.max(0, this.wispLifeSpan - this.wispAge);
+    }
+
+    isWispVisible() {
+        return !this.isWisp || isVisibleForLifetimeWarning(this.wispAge, this.getWispRemainingLifetime());
     }
 
     applyShopUpgrade(slot) {
@@ -2140,6 +2166,7 @@ export class Player {
     }
 
     draw(ctx, assets, camera) {
+        if (!this.isWispVisible()) return;
         // Draw Ghosts
         this.ghosts.forEach(ghost => {
             ctx.save();
