@@ -946,14 +946,10 @@ export class Game {
                 const point = this.getDesignPoint(e);
                 this.mouse.x = point.x;
                 this.mouse.y = point.y;
-                const shopWeapon = this.isShopMenuOpen
-                    ? this.hud.getShopPrimaryWeaponAt(point.x, point.y, this.players)
-                    : null;
                 const selection = this.isInGameplayState() && !this.isPauseMenuOpen
                     ? this.hud.getLevelUpgradeAt(this.mouse.x, this.mouse.y, this.players, this.gameState === 'PVP')
                     : null;
-                if (shopWeapon) Game.prototype.handleSector0ShopSelectionIntent.call(this, shopWeapon.weaponId);
-                else if (selection && !this.isShopMenuOpen) selection.player.applyLevelUpgrade(selection.choice);
+                if (selection && !this.isShopMenuOpen) selection.player.applyLevelUpgrade(selection.choice);
                 else this.mouse.clicked = true;
             }
             if (e.button === 2 && !this.mouse.m2Held && e.target === this.canvas && this.isInGameplayState()
@@ -1378,6 +1374,10 @@ export class Game {
         document.querySelectorAll('[data-shop-weapon]').forEach(button => button.addEventListener('click', () => {
             Game.prototype.handleSector0ShopWeaponIntent.call(this, button.dataset.shopWeapon);
         }));
+        document.querySelectorAll('[data-shop-select-weapon]').forEach(button => button.addEventListener('click', event => {
+            event.stopPropagation();
+            Game.prototype.handleSector0ShopSelectionIntent.call(this, button.dataset.shopSelectWeapon);
+        }));
         document.querySelectorAll('[data-shop-utility]').forEach(button => button.addEventListener('click', () => {
             Game.prototype.handleUtilityShopIntent.call(this, button.dataset.shopUtility);
         }));
@@ -1479,6 +1479,7 @@ export class Game {
         document.querySelectorAll?.('[data-sector-0-shop-menu]').forEach(candidate => candidate.classList.add('hidden'));
         const menu = document.getElementById(menuId);
         menu?.classList.remove('hidden');
+        Game.prototype.refreshSector0ShopWeaponSelector.call(this);
         if (shopType === 'WEAPONS_SHOP') Game.prototype.refreshSector0ShopMenu.call(this);
         if (shopType === 'UTILITY_SHOP') Game.prototype.refreshUtilityShopMenu.call(this);
         if (shopType === 'SHIP_MODIFICATION') Game.prototype.refreshShipModificationMenu.call(this);
@@ -1491,6 +1492,7 @@ export class Game {
         this.isShopMenuOpen = false;
         this.activeSector0Shop = null;
         document.querySelectorAll?.('[data-sector-0-shop-menu]').forEach(menu => menu.classList.add('hidden'));
+        document.getElementById?.('sector-0-shop-weapon-selector')?.classList.add('hidden');
         return true;
     }
 
@@ -1513,6 +1515,7 @@ export class Game {
         if (player.scrap < offer.price || !player.purchaseWeaponTier(weaponId)) return false;
         player.scrap -= offer.price;
         Game.prototype.refreshSector0ShopMenu.call(this);
+        Game.prototype.refreshSector0ShopWeaponSelector.call(this);
         Game.prototype.saveExperimentalProfile.call(this, player);
         return true;
     }
@@ -1526,7 +1529,23 @@ export class Game {
         if (!this.isShopMenuOpen || !Game.prototype.isHumanInSector0Shop.call(this)) return false;
         if (!player?.selectPrimaryWeapon(weaponId)) return false;
         Game.prototype.refreshSector0ShopMenu.call(this);
+        Game.prototype.refreshSector0ShopWeaponSelector.call(this);
         return true;
+    }
+
+    refreshSector0ShopWeaponSelector() {
+        if (typeof document === 'undefined') return;
+        const player = Game.prototype.getHumanPlayer.call(this);
+        const selector = document.getElementById('sector-0-shop-weapon-selector');
+        selector?.classList.toggle('hidden', !this.isShopMenuOpen || !player);
+        document.querySelectorAll?.('[data-shop-select-weapon]').forEach(button => {
+            const weaponId = button.dataset.shopSelectWeapon;
+            const owned = weaponId === 'Ballistic' || Boolean(player?.ownsWeapon?.(weaponId));
+            button.classList.toggle('hidden', !owned);
+            button.classList.toggle('selected', owned && player.equippedPrimaryGun === weaponId);
+            button.setAttribute('aria-pressed', String(owned && player.equippedPrimaryGun === weaponId));
+            button.disabled = !owned;
+        });
     }
 
     refreshSector0ShopMenu() {
@@ -1681,10 +1700,7 @@ export class Game {
         if (event.pointerType !== 'touch') return false;
         const point = this.getDesignPoint(event);
         if (this.isShopMenuOpen) {
-            const shopWeapon = this.hud.getShopPrimaryWeaponAt(point.x, point.y, this.players);
-            return shopWeapon
-                ? Game.prototype.handleSector0ShopSelectionIntent.call(this, shopWeapon.weaponId)
-                : false;
+            return false;
         }
         if (!this.canAcceptGameplayTouch()) return false;
         this.audio?.unlock?.();
