@@ -856,6 +856,10 @@ export class Game {
                 Game.prototype.handleMissileFire.call(this, 1);
                 e.preventDefault();
             }
+            if (e.code === 'KeyR' && !e.repeat && this.isInGameplayState()) {
+                Game.prototype.handleManualReload.call(this, 1);
+                e.preventDefault();
+            }
             if (Game.prototype.handleLevelUpgradeKey.call(this, e.code)) {
                 e.preventDefault();
                 return;
@@ -2905,6 +2909,13 @@ export class Game {
         });
         Game.prototype.playSpatialEvent.call(this, 'laser_fire', player.x, player.y, player.roomId, this.getActiveCameras());
         return true;
+    }
+
+    handleManualReload(playerId) {
+        const player = this.players.find(candidate => candidate.id === playerId);
+        if (!player || player.isDead || player.isNPC || player.isWeaponLocked()
+            || this.victoryFadeActive || this.victoryScreenActive) return false;
+        return player.reloadAllWeapons();
     }
 
     getActiveCameras() {

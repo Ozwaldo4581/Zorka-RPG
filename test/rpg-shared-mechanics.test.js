@@ -16,6 +16,7 @@ import {
     MISSILE_HOMING_TURN_RATE,
     STANDARD_PROJECTILE_HOMING_FACTOR
 } from '../entities/projectile.js';
+import { Game } from '../game.js';
 
 test('shared aim-relative movement applies human and NPC coefficients', () => {
     const human = new Player(0, 0);
@@ -85,6 +86,35 @@ test('partial clips persist and empty clips reload after seven seconds', () => {
     assert.equal(player.clipRounds, 0);
     player.updateWeaponTimers(0.01);
     assert.equal(player.clipRounds, player.getClipCapacity());
+});
+
+test('manual reload starts all depleted channels without replacing their timers', () => {
+    const player = new Player(0, 0);
+    player.clipRounds = 5;
+    player.missileLevel = 3;
+    player.missileAmmo = 1;
+
+    assert.equal(player.reloadAllWeapons(), true);
+    assert.equal(player.clipReloadTimer, CLIP_RELOAD_DURATION);
+    assert.equal(player.missileReloadTimer, 12);
+    assert.equal(player.clipRounds, 5, 'manual reload does not instantly refill primary ammo');
+    assert.equal(player.missileAmmo, 1, 'manual reload does not instantly refill Missile ammo');
+
+    player.updateWeaponTimers(2);
+    assert.equal(player.reloadAllWeapons(), false, 'already-running and full channels are no-ops');
+    assert.equal(player.clipReloadTimer, CLIP_RELOAD_DURATION - 2);
+    assert.equal(player.missileReloadTimer, 10);
+});
+
+test('Game dispatches manual reload only to the requested living human player', () => {
+    const player = new Player(0, 0, 1);
+    player.clipRounds--;
+    const game = { players: [player], victoryFadeActive: false, victoryScreenActive: false };
+
+    assert.equal(Game.prototype.handleManualReload.call(game, 1), true);
+    assert.equal(player.clipReloadTimer, CLIP_RELOAD_DURATION);
+    assert.equal(Game.prototype.handleManualReload.call(game, 1), false);
+    assert.match(Game.prototype.bindEvents.toString(), /KeyR.*!e\.repeat.*isInGameplayState/s);
 });
 
 test('manual missiles require Player-owned ammunition and fixed reload', () => {
