@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Game, GAME_MODE } from '../game.js';
+import { Game, GAME_MODE, getSpraakXPReward } from '../game.js';
 import { Asteroid } from '../entities/asteroid.js';
 import { Player } from '../entities/player.js';
 import {
-    Spraak, SPRAAK_DASH_DURATION, SPRAAK_ENTITY_TYPE, SPRAAK_SIZE_MULTIPLIER,
+    Spraak, SPRAAK_DASH_DURATION, SPRAAK_DASH_FORCE_MULTIPLIER,
+    SPRAAK_ENTITY_TYPE, SPRAAK_PURSUIT_FORCE_MULTIPLIER, SPRAAK_SIZE_MULTIPLIER,
     SPRAAK_STATE
 } from '../entities/spraak.js';
 
@@ -14,6 +15,7 @@ test('Spraak has explicit identity, player-relative size, level HP, no shields, 
         const spraak = new Spraak(0, 0, level);
         assert.equal(spraak.entityType, SPRAAK_ENTITY_TYPE);
         assert.equal(spraak.radius, player.radius * SPRAAK_SIZE_MULTIPLIER);
+        assert.equal(spraak.radius, player.radius);
         assert.equal(spraak.maxHP, 6 + level);
         assert.equal(spraak.currentHP, 6 + level);
         assert.deepEqual([spraak.maxShieldCharges, spraak.shieldCharges], [0, 0]);
@@ -71,6 +73,46 @@ test('Spraak behavior transitions through pursuit, hook, brake, and a 0.2 second
     assert.equal(spraak.state, SPRAAK_STATE.DASH);
     assert.equal(spraak.stateTimer, SPRAAK_DASH_DURATION);
     assert.ok(spraak.dashDirection.x > 0);
+    assert.ok(SPRAAK_DASH_FORCE_MULTIPLIER > SPRAAK_PURSUIT_FORCE_MULTIPLIER * 10);
+    assert.equal(spraak.rotation, Math.PI / 2);
+    const velocityBefore = spraak.vx;
+    spraak.update(0.05, options);
+    assert.ok(spraak.vx - velocityBefore > spraak.getEffectiveThrust() * SPRAAK_PURSUIT_FORCE_MULTIPLIER * 0.05);
+});
+
+test('Spraak rendering has no target pointer while retaining hook state', () => {
+    const spraak = new Spraak(0, 0);
+    spraak.state = SPRAAK_STATE.HOOK;
+    spraak.target = { x: 100, y: 0 };
+    let strokes = 0;
+    const ctx = {
+        save() {}, restore() {}, rotate() {}, drawImage() {},
+        stroke() { strokes++; }
+    };
+    spraak.draw(ctx, { spraak: {} }, { apply() {} });
+    assert.equal(strokes, 0);
+    assert.ok(spraak.target);
+});
+
+test('confirmed Spraak rewards are 25 XP per level with no debris or capsules', () => {
+    for (const [level, expectedXP] of [[1, 25], [3, 75]]) {
+        const spraak = new Spraak(0, 0, level);
+        const killer = { capsules: 0, addCapsule() { this.capsules++; } };
+        const rewards = [];
+        const game = { awardXP(owner, amount, source) { rewards.push({ owner, amount, source }); } };
+        assert.equal(getSpraakXPReward(spraak), expectedXP);
+        assert.equal(Game.prototype.resolveSpraakKillReward.call(game, spraak, killer), expectedXP);
+        assert.deepEqual(rewards, [{ owner: killer, amount: expectedXP, source: spraak }]);
+        assert.equal(killer.capsules, 0);
+        assert.equal('spawnDebrisBurst' in game, false);
+    }
+});
+
+test('ordinary NPC XP and capsule formulas remain unchanged', () => {
+    const npc = new Player(0, 0);
+    npc.isNPC = true;
+    npc.level = 3;
+    assert.equal(Game.prototype.getNPCXPReward.call({}, npc), 300);
 });
 
 test('Spraak remains outside ordinary Adventure population classification', () => {

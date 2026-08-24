@@ -94,6 +94,11 @@ export function getNPCCapsuleRewardCount(npcLevel) {
     return Math.max(0, Math.floor(Number(npcLevel) || 0) - 3);
 }
 
+export function getSpraakXPReward(spraak) {
+    if (spraak?.entityType !== SPRAAK_ENTITY_TYPE || !Number.isFinite(spraak.level)) return 0;
+    return Math.max(0, Math.floor(spraak.level)) * 25;
+}
+
 export const PROJECTILE_COMBAT_CATEGORY = Object.freeze({
     MISSILE: 'MISSILE',
     SKINNY_MISSILE: 'SKINNY_MISSILE',
@@ -381,7 +386,7 @@ export class Game {
     async loadAssets() {
         this.assets = {
             ship: await this.loadImage('assets/ShipSketch_256x256.png'),
-            spraak: await this.loadImage('assets/spraak_wings_middle_256.png'),
+            spraak: await this.loadImage('assets/spraak_wings_middle_356.png'),
             ufo: await this.loadImage('assets/1000008891.png'),
             cyborg: await this.loadImage('assets/cyborg_ship.webp'),
             dimensionX: await this.loadImage('assets/dimension_x_monster.webp'),
@@ -5061,10 +5066,13 @@ export class Game {
 
         // Award the confirmed kill before Hardcore clears the victim's progression.
         if (killer && killer !== player && typeof killer.addCapsule === 'function' && !player.noKillReward) {
-            if (player.isNPC && !player.isSpecter) {
+            const isSpraak = player.entityType === SPRAAK_ENTITY_TYPE;
+            if (isSpraak) {
+                Game.prototype.resolveSpraakKillReward.call(this, player, killer);
+            } else if (player.isNPC && !player.isSpecter) {
                 this.awardXP(killer, Game.prototype.getNPCXPReward.call(this, player), player);
             }
-            if (this.gameState === GAME_MODE.EXPERIMENTAL && player.isNPC) {
+            if (this.gameState === GAME_MODE.EXPERIMENTAL && player.isNPC && !isSpraak) {
                 let debrisCount;
                 if (player.isSpecter) {
                     const human = this.players.find(candidate => !candidate.isNPC);
@@ -5080,14 +5088,16 @@ export class Game {
                 }
             }
             if (player.isNPC) {
-                if (player.entityType !== SPRAAK_ENTITY_TYPE) {
+                if (!isSpraak) {
                     const capsuleCount = getNPCCapsuleRewardCount(player.level);
                     for (let count = 0; count < capsuleCount; count++) killer.addCapsule();
                 }
             } else killer.addCapsule();
-            killer.score = (killer.score || 0) + 1;
-            killer.killStreak = (killer.killStreak || 0) + 1;
-            if (killer.killStreak > (killer.highTide || 0)) killer.highTide = killer.killStreak;
+            if (!isSpraak) {
+                killer.score = (killer.score || 0) + 1;
+                killer.killStreak = (killer.killStreak || 0) + 1;
+                if (killer.killStreak > (killer.highTide || 0)) killer.highTide = killer.killStreak;
+            }
         }
 
         const isOneLifeHuman = (this.gameState === 'ARCADE' || this.gameState === GAME_MODE.EXPERIMENTAL)
@@ -5158,6 +5168,13 @@ export class Game {
             killer.x, killer.y - killer.radius - 24, killer.color, killer.roomId, killer);
         if (!killer.isNPC) Game.prototype.saveExperimentalProfile.call(this, killer);
         return levelsGained;
+    }
+
+    resolveSpraakKillReward(spraak, killer) {
+        const reward = getSpraakXPReward(spraak);
+        if (reward <= 0) return 0;
+        this.awardXP(killer, reward, spraak);
+        return reward;
     }
 
     getNPCXPReward(npc) {
