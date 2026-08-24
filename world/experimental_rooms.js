@@ -430,7 +430,8 @@ export function createExperimentalAreas(roomWidth, roomHeight) {
         },
         {
             id: 'experimental-sector-0-space-bar', role: EXPERIMENTAL_AREA_ROLE.SPACE_BAR,
-            name: 'Sector 0 Space Bar', displayText: 'The Space Bar', interaction: 'SPACE_BAR_STUB',
+            name: 'Sector 0 Space Bar', displayText: 'Buy a Round for the Bar',
+            detailText: 'Press Space Bar to Buy a Round for the Bar', interaction: 'SPACE_BAR',
             bounds: boundsAt((roomBounds.left + roomBounds.right - EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH) / 2,
                 roomBounds.bottom,
                 EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH, EXPERIMENTAL_SECTOR_0_DEAD_END_DEPTH)
