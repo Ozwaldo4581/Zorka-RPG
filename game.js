@@ -1607,8 +1607,8 @@ export class Game {
         if (upgradeId === 'shield') player.applyShieldUpgrade();
         if (upgradeId === 'shieldRecharge') player.updateShieldRechargeDelay();
         if (upgradeId === 'hullProtection') player.increaseMaxHP();
-        Game.prototype.refreshShipModificationMenu.call(this);
         Game.prototype.saveExperimentalProfile.call(this, player);
+        Game.prototype.refreshShipModificationMenu.call(this);
         return true;
     }
 
