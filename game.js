@@ -2487,8 +2487,22 @@ export class Game {
                 : { x: debris.x - player.x, y: debris.y - player.y };
             const distance = Math.hypot(delta.x, delta.y);
             if (distance <= 0 || distance > range) continue;
-            debris.vx += -delta.x / distance * 2400 * dt;
-            debris.vy += -delta.y / distance * 2400 * dt;
+            const targetX = -delta.x / distance;
+            const targetY = -delta.y / distance;
+            debris.vx += targetX * 2400 * dt;
+            debris.vy += targetY * 2400 * dt;
+            const speed = Math.hypot(debris.vx, debris.vy);
+            if (speed > 0) {
+                const homingStrength = player.getScrapMagnetHomingStrength(distance);
+                const steering = Math.min(1, 1 - Math.exp(-homingStrength * Math.max(0, dt)));
+                const steeredX = debris.vx + (targetX * speed - debris.vx) * steering;
+                const steeredY = debris.vy + (targetY * speed - debris.vy) * steering;
+                const steeredSpeed = Math.hypot(steeredX, steeredY);
+                if (steeredSpeed > 0) {
+                    debris.vx = steeredX / steeredSpeed * speed;
+                    debris.vy = steeredY / steeredSpeed * speed;
+                }
+            }
             affected++;
         }
         return affected;

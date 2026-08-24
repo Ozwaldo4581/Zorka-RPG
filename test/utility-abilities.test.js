@@ -5,6 +5,7 @@ import { Player } from '../entities/player.js';
 import { Projectile } from '../entities/projectile.js';
 import { SpaceDebris } from '../entities/hazards.js';
 import { Game, GAME_MODE } from '../game.js';
+import { WORLD_WIDTH } from '../world_config.js';
 
 const own = (player, utility) => {
     assert.equal(player.purchaseUtility(utility), true);
@@ -35,22 +36,72 @@ test('Emergency Break uses acceleration over time and stops without reversing', 
     assert.equal(player.activateEmergencyBrake(), true);
 });
 
-test('Scrap Magnet uses a held 360-degree, fifteen-ship-length radius and suppresses primary fire', () => {
+test('Scrap Magnet uses a held 360-degree, thirty-ship-length radius and suppresses primary fire', () => {
     const player = own(new Player(0, 0), 'Scrap Magnet');
     player.scrapMagnetActive = true;
-    const oldRange = player.radius * 2 * 10;
-    assert.equal(player.getScrapMagnetRange(), oldRange * 1.5);
-    const insideOldRange = new SpaceDebris(oldRange - 1, 0);
-    const insideExpandedRange = new SpaceDebris(0, -(oldRange * 1.5 - 1));
-    const outsideExpandedRange = new SpaceDebris(-(oldRange * 1.5 + 1), 0);
-    for (const debris of [insideOldRange, insideExpandedRange, outsideExpandedRange]) Object.assign(debris, { vx: 0, vy: 0 });
-    const game = { gameState: GAME_MODE.EXPERIMENTAL, hazards: [insideOldRange, insideExpandedRange, outsideExpandedRange] };
+    const originalRange = player.radius * 2 * 10;
+    const previousRange = originalRange * 1.5;
+    const newRange = previousRange * 2;
+    assert.equal(player.getScrapMagnetRange(), originalRange * 3);
+    const insidePreviousRange = new SpaceDebris(previousRange - 1, 0);
+    const insideNewRange = new SpaceDebris(0, -(newRange - 1));
+    const outsideNewRange = new SpaceDebris(-(newRange + 1), 0);
+    for (const debris of [insidePreviousRange, insideNewRange, outsideNewRange]) Object.assign(debris, { vx: 0, vy: 0 });
+    const game = { gameState: GAME_MODE.EXPERIMENTAL, hazards: [insidePreviousRange, insideNewRange, outsideNewRange] };
     assert.equal(Game.prototype.applyScrapMagnet.call(game, player, 0.1), 2);
-    assert.ok(insideOldRange.vx < 0);
-    assert.ok(insideExpandedRange.vy > 0);
-    assert.deepEqual([outsideExpandedRange.vx, outsideExpandedRange.vy], [0, 0]);
+    assert.ok(insidePreviousRange.vx < 0);
+    assert.ok(insideNewRange.vy > 0);
+    assert.deepEqual([outsideNewRange.vx, outsideNewRange.vy], [0, 0]);
     player.spawnImmunityTimer = 0;
     assert.equal(player.fire(), null);
+});
+
+test('Scrap Magnet homing is finite, capped, and strengthens monotonically toward pickup', () => {
+    const player = new Player(0, 0);
+    const range = player.getScrapMagnetRange();
+    const strengths = [range, range / 2, range / 5, player.radius + 36, 0]
+        .map(distance => player.getScrapMagnetHomingStrength(distance));
+    assert.equal(strengths[0], 0.5);
+    assert.ok(strengths[1] > strengths[0]);
+    assert.ok(strengths[2] > strengths[1]);
+    assert.equal(strengths.at(-1), 40);
+    assert.ok(strengths.every(Number.isFinite));
+    assert.ok(strengths.every((strength, index) => index === 0 || strength >= strengths[index - 1]));
+});
+
+test('Scrap Magnet uses the shortest displacement across a wrapped seam', () => {
+    const player = own(new Player(1, 100), 'Scrap Magnet');
+    player.scrapMagnetActive = true;
+    const debris = new SpaceDebris(WORLD_WIDTH - 1, 100);
+    Object.assign(debris, { vx: 0, vy: 0 });
+    const game = { gameState: GAME_MODE.SOLO, hazards: [debris] };
+    assert.equal(Game.prototype.applyScrapMagnet.call(game, player, 1 / 60), 1);
+    assert.ok(debris.vx > 0);
+    assert.ok(Math.abs(debris.vy) < 1e-9);
+});
+
+test('Scrap Magnet redirects tangential Scrap toward normal pickup and stops on release', () => {
+    const player = own(new Player(0, 0), 'Scrap Magnet');
+    player.scrapMagnetActive = true;
+    const debris = new SpaceDebris(300, 0);
+    Object.assign(debris, { vx: 0, vy: 500, lifeSpan: 100 });
+    const game = { gameState: GAME_MODE.EXPERIMENTAL, hazards: [debris] };
+    const initialAlignment = -debris.vx / Math.hypot(debris.vx, debris.vy);
+    Game.prototype.applyScrapMagnet.call(game, player, 1 / 60);
+    const redirectedAlignment = -debris.vx / Math.hypot(debris.vx, debris.vy);
+    assert.ok(redirectedAlignment > initialAlignment);
+
+    for (let frame = 0; frame < 600 && Math.hypot(debris.x, debris.y) > player.radius + debris.radius; frame++) {
+        Game.prototype.applyScrapMagnet.call(game, player, 1 / 60);
+        debris.update(1 / 60, { wrap: false });
+    }
+    assert.ok(Math.hypot(debris.x, debris.y) <= player.radius + debris.radius);
+
+    player.scrapMagnetActive = false;
+    const velocity = [debris.vx, debris.vy];
+    assert.equal(Game.prototype.applyScrapMagnet.call(game, player, 1 / 60), 0);
+    assert.deepEqual([debris.vx, debris.vy], velocity);
+    assert.equal('scrapMagnetTarget' in debris, false);
 });
 
 test('Scrap Magnet held intent releases immediately and render vibration never changes world position', () => {

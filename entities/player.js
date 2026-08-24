@@ -208,7 +208,17 @@ export class Player {
 
     getScrapMagnetRange() {
         const shipLength = this.radius * 2;
-        return shipLength * 10 * 1.5;
+        return shipLength * 10 * 1.5 * 2;
+    }
+
+    getScrapMagnetHomingStrength(distance) {
+        const range = this.getScrapMagnetRange();
+        const normalizedDistance = Math.max(0, Math.min(1, Number(distance) / range || 0));
+        const baseStrength = 0.5;
+        const maximumStrength = 40;
+        const distanceFloor = 0.1;
+        return Math.min(maximumStrength,
+            baseStrength / Math.max(distanceFloor, normalizedDistance) ** 2);
     }
 
     getScrapMagnetRenderOffset(now = Date.now()) {
