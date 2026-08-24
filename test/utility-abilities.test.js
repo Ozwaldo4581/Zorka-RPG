@@ -35,20 +35,39 @@ test('Emergency Break uses acceleration over time and stops without reversing', 
     assert.equal(player.activateEmergencyBrake(), true);
 });
 
-test('Scrap Collector uses a held 30-degree, ten-ship-length cone and suppresses primary fire', () => {
-    const player = own(new Player(0, 0), 'Scrap Collector');
-    player.rotation = Math.PI / 2;
-    player.scrapCollectorActive = true;
-    const inside = new SpaceDebris(400, 0);
-    const outsideAngle = new SpaceDebris(400, 200);
-    const outsideRange = new SpaceDebris(501, 0);
-    for (const debris of [inside, outsideAngle, outsideRange]) Object.assign(debris, { vx: 0, vy: 0 });
-    const game = { gameState: GAME_MODE.EXPERIMENTAL, hazards: [inside, outsideAngle, outsideRange] };
-    assert.equal(Game.prototype.applyScrapCollector.call(game, player, 0.1), 1);
-    assert.ok(inside.vx < 0);
-    assert.deepEqual([outsideAngle.vx, outsideRange.vx], [0, 0]);
+test('Scrap Magnet uses a held 360-degree, fifteen-ship-length radius and suppresses primary fire', () => {
+    const player = own(new Player(0, 0), 'Scrap Magnet');
+    player.scrapMagnetActive = true;
+    const oldRange = player.radius * 2 * 10;
+    assert.equal(player.getScrapMagnetRange(), oldRange * 1.5);
+    const insideOldRange = new SpaceDebris(oldRange - 1, 0);
+    const insideExpandedRange = new SpaceDebris(0, -(oldRange * 1.5 - 1));
+    const outsideExpandedRange = new SpaceDebris(-(oldRange * 1.5 + 1), 0);
+    for (const debris of [insideOldRange, insideExpandedRange, outsideExpandedRange]) Object.assign(debris, { vx: 0, vy: 0 });
+    const game = { gameState: GAME_MODE.EXPERIMENTAL, hazards: [insideOldRange, insideExpandedRange, outsideExpandedRange] };
+    assert.equal(Game.prototype.applyScrapMagnet.call(game, player, 0.1), 2);
+    assert.ok(insideOldRange.vx < 0);
+    assert.ok(insideExpandedRange.vy > 0);
+    assert.deepEqual([outsideExpandedRange.vx, outsideExpandedRange.vy], [0, 0]);
     player.spawnImmunityTimer = 0;
     assert.equal(player.fire(), null);
+});
+
+test('Scrap Magnet held intent releases immediately and render vibration never changes world position', () => {
+    const player = own(new Player(12, 34), 'Scrap Magnet');
+    const game = { keys: { Digit1: true }, isShopMenuOpen: false, isPauseMenuOpen: false,
+        isValidAimLockTarget: () => false };
+    Game.prototype.updateHeldUtilityIntents.call(game, player);
+    assert.equal(player.scrapMagnetActive, true);
+    assert.notDeepEqual(player.getScrapMagnetRenderOffset(10), { x: 0, y: 0 });
+    assert.notDeepEqual(player.getScrapMagnetRenderOffset(10), player.getScrapMagnetRenderOffset(20));
+    assert.deepEqual([player.x, player.y], [12, 34]);
+    game.keys.Digit1 = false;
+    Game.prototype.updateHeldUtilityIntents.call(game, player);
+    assert.equal(player.scrapMagnetActive, false);
+    assert.deepEqual(player.getScrapMagnetRenderOffset(20), { x: 0, y: 0 });
+    player.spawnImmunityTimer = 0;
+    assert.ok(player.fire()?.length > 0);
 });
 
 test('Beam Hook preserves radial distance, follows target translation, and releases invalid targets', () => {
