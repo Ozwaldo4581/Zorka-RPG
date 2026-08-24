@@ -51,11 +51,16 @@ export const DEFAULT_P1_CONTROL_MODE = 'KEYBOARD';
 export const MISSILE_DAMAGE = 3;
 export const RPG_DEBRIS_DROP_CHANCE = 0.33;
 export const RPG_DEBRIS_SCRAP_VALUE = 10;
-export const SECTOR_0_SHOP_PRICES = Object.freeze([
-    Object.freeze([100, 200, 300, 400, 500]),
-    Object.freeze([1000, 2000, 3000, 4000, 5000]),
-    Object.freeze([2000, 4000, 6000, 8000, 10000])
+export const SECTOR_0_WEAPON_CATALOG = Object.freeze([
+    Object.freeze({ id: 'Antigun', label: 'Antigun', prices: Object.freeze([100, 200, 400]) }),
+    Object.freeze({ id: 'Doublegun', label: 'Doublegun', prices: Object.freeze([100, 200, 400]) }),
+    Object.freeze({ id: 'Missile', label: 'Missile', maxTier: 12, priceForTier: tier => tier * 200 }),
+    Object.freeze({ id: 'Laser', label: 'Laser', prices: Object.freeze([500, 1500, 3000]) }),
+    Object.freeze({ id: 'Orb', label: 'Orb', prices: Object.freeze([1000, 2500, 4500]) }),
+    Object.freeze({ id: 'Ghost', label: 'Ghost', prices: Object.freeze([5000, 10000, 15000]) })
 ]);
+// Compatibility export retained for integrations that import the old name.
+export const SECTOR_0_SHOP_PRICES = SECTOR_0_WEAPON_CATALOG;
 
 export function getExperimentalNPCCapsuleBudget(npcLevel, roomNumber) {
     return Math.max(1, Math.floor(Number(npcLevel) || 1))
@@ -1302,8 +1307,8 @@ export class Game {
 
         document.getElementById('btn-quit-yes').addEventListener('click', () => this.confirmQuit());
         document.getElementById('btn-quit-no').addEventListener('click', () => this.closeQuitConfirmation());
-        document.querySelectorAll('[data-shop-slot]').forEach(button => button.addEventListener('click', () => {
-            Game.prototype.purchaseSector0ShopUpgrade.call(this, button.dataset.shopSlot);
+        document.querySelectorAll('[data-shop-weapon]').forEach(button => button.addEventListener('click', () => {
+            Game.prototype.handleSector0ShopWeaponIntent.call(this, button.dataset.shopWeapon);
         }));
         document.getElementById('btn-sector-0-shop-back')?.addEventListener('click', () => {
             Game.prototype.closeSector0Shop.call(this);
@@ -1382,23 +1387,37 @@ export class Game {
         return true;
     }
 
-    getSector0ShopOffer(player, slot) {
-        const index = Math.floor(Number(slot)) - 1;
-        const tier = player?.shopUpgradeTiers?.[index];
-        if (index < 0 || index >= 5 || !Number.isInteger(tier) || tier >= SECTOR_0_SHOP_PRICES.length) return null;
-        return { slot: index + 1, tier, price: SECTOR_0_SHOP_PRICES[tier][index] };
+    getSector0ShopOffer(player, weaponId) {
+        const product = SECTOR_0_WEAPON_CATALOG.find(entry => entry.id === weaponId);
+        if (!product || !player) return null;
+        const tier = player.getWeaponPurchaseTier(weaponId);
+        const selected = player.equippedPrimaryGun === weaponId;
+        if (tier > 0 && !selected) return { product, tier, action: 'select', price: null };
+        const nextTier = tier + 1;
+        const capped = product.prices ? nextTier > product.prices.length : nextTier > product.maxTier;
+        if (capped) return { product, tier, action: 'capped', price: null };
+        const price = product.prices?.[tier] ?? product.priceForTier(nextTier);
+        return { product, tier, nextTier, action: 'purchase', price };
     }
 
-    purchaseSector0ShopUpgrade(slot) {
+    handleSector0ShopWeaponIntent(weaponId) {
         const player = Game.prototype.getHumanPlayer.call(this);
         if (!this.isShopMenuOpen || !Game.prototype.isHumanInSector0Shop.call(this)) return false;
-        const offer = Game.prototype.getSector0ShopOffer.call(this, player, slot);
-        if (!offer || player.scrap < offer.price || !player.canActivateCapsuleSlot(offer.slot)) return false;
-        if (!player.applyShopUpgrade(offer.slot)) return false;
+        const offer = Game.prototype.getSector0ShopOffer.call(this, player, weaponId);
+        if (!offer || offer.action === 'capped') return false;
+        if (offer.action === 'select') {
+            if (!player.equipPurchasedWeapon(weaponId)) return false;
+            Game.prototype.refreshSector0ShopMenu.call(this);
+            return true;
+        }
+        if (player.scrap < offer.price || !player.purchaseWeaponTier(weaponId)) return false;
         player.scrap -= offer.price;
-        player.shopUpgradeTiers[offer.slot - 1]++;
         Game.prototype.refreshSector0ShopMenu.call(this);
         return true;
+    }
+
+    purchaseSector0ShopUpgrade(weaponId) {
+        return Game.prototype.handleSector0ShopWeaponIntent.call(this, weaponId);
     }
 
     refreshSector0ShopMenu() {
@@ -1406,11 +1425,14 @@ export class Game {
         if (typeof document === 'undefined') return;
         const balance = document.getElementById('sector-0-shop-balance');
         if (balance) balance.textContent = `Scrap - ${player?.scrap || 0}`;
-        document.querySelectorAll?.('[data-shop-slot]').forEach(button => {
-            const offer = Game.prototype.getSector0ShopOffer.call(this, player, button.dataset.shopSlot);
+        document.querySelectorAll?.('[data-shop-weapon]').forEach(button => {
+            const offer = Game.prototype.getSector0ShopOffer.call(this, player, button.dataset.shopWeapon);
             const price = button.closest('.shop-row')?.querySelector('.shop-price');
-            if (price) price.textContent = offer ? offer.price.toLocaleString('en-US') : 'CAPPED';
-            button.disabled = !offer || player.scrap < offer.price || !player.canActivateCapsuleSlot(offer.slot);
+            if (price) price.textContent = offer?.price == null ? '—' : offer.price.toLocaleString('en-US');
+            button.textContent = offer?.action === 'select' ? 'Select Gun'
+                : offer?.action === 'capped' ? 'CAPPED' : offer?.product.label || button.dataset.shopWeapon;
+            button.disabled = !offer || offer.action === 'capped'
+                || (offer.action === 'purchase' && player.scrap < offer.price);
         });
     }
 
@@ -2697,16 +2719,15 @@ export class Game {
 
     drawExperimentalMessages(ctx) {
         if (this.gameState !== GAME_MODE.EXPERIMENTAL) return;
-        const shop = (this.experimentalRooms || []).find(area => isSector0ShopArea(area));
-        if (shop) {
+        for (const area of (this.experimentalRooms || []).filter(candidate => candidate.displayText)) {
             ctx.save();
-            this.camera.apply(ctx, (shop.bounds.left + shop.bounds.right) / 2, (shop.bounds.top + shop.bounds.bottom) / 2);
+            this.camera.apply(ctx, (area.bounds.left + area.bounds.right) / 2, (area.bounds.top + area.bounds.bottom) / 2);
             ctx.textAlign = 'center';
             ctx.fillStyle = '#00ffff';
             ctx.shadowColor = '#000';
             ctx.shadowBlur = 12;
             ctx.font = 'bold 34px Orbitron';
-            ctx.fillText('Purchase Upgrades', 0, 0);
+            ctx.fillText(area.displayText, 0, 0);
             ctx.restore();
         }
         ctx.save();
@@ -4593,6 +4614,9 @@ export class Game {
         player.history = []; // Clear history so ghosts don't snap back to old positions on respawn
         player.martianParallelGuns = 1;
         player.resetEvolutionForm();
+        // Shop purchases are Player-owned persistent progression. Rebuild only their
+        // runtime representation after clearing capsules, ammo, locks and forms.
+        if (player.equippedPrimaryGun) player.equipPurchasedWeapon(player.equippedPrimaryGun);
 
         // Dying resets this ship's current kill streak AND best High Tide
         player.killStreak = 0;
@@ -5187,6 +5211,7 @@ export class Game {
                     gameMode: this.gameState,
                     shopEligible: Game.prototype.isHumanInSector0Shop.call(this),
                     shopMenuOpen: this.isShopMenuOpen,
+                    currentArea: this.experimentalRooms?.find(area => area.id === this.players[0]?.roomId) || null,
                     profileName: this.gameState === GAME_MODE.EXPERIMENTAL
                         && Number.isInteger(this.selectedExperimentalProfileSlot)
                         ? this.experimentalProfiles.getProfile(this.selectedExperimentalProfileSlot)?.name || null

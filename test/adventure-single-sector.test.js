@@ -29,19 +29,20 @@ function createTopologyGame() {
   return game;
 }
 
-test('Adventure topology connects Sector 1 to a terminal Sector 0 hallway', () => {
+test('Adventure topology connects Sector 1 to three terminal Sector 0 areas', () => {
   const game = createTopologyGame();
   const room = game.experimentalRooms.find(area => area.roomNumber === 1);
   const hallway = game.experimentalRooms.find(area => area.roomNumber === 0);
   const [door] = game.experimentalDoors;
 
-  assert.equal(game.experimentalRooms.length, 2);
+  assert.equal(game.experimentalRooms.length, 4);
   assert.equal(hallway.areaType, EXPERIMENTAL_AREA_TYPE.HALLWAY);
   assert.equal(hallway.name, 'Sector 0 Shop');
   assert.equal(game.experimentalRooms.filter(isSector0ShopArea).length, 1);
   assert.equal(isSector0ShopArea(room), false);
-  assert.equal(hallway.id, 'experimental-sector-0-dead-end-hallway');
-  assert.deepEqual(room.connectedAreaIds, [hallway.id]);
+  assert.equal(hallway.id, 'experimental-sector-0-weapons-shop');
+  assert.equal(room.connectedAreaIds.length, 3);
+  assert.ok(room.connectedAreaIds.includes(hallway.id));
   assert.deepEqual(hallway.connectedAreaIds, [room.id]);
   assert.deepEqual(door.roomIds, [room.id, hallway.id]);
   assert.equal(door.orientation, 'VERTICAL');
@@ -131,7 +132,7 @@ test('hallway side and dead-end walls block players and projectiles through shar
   assert.equal(detonated, true);
 });
 
-test('Adventure minimap shows the entire game world except the Sector 0 Shop', () => {
+test('Adventure minimap shows the complete Sector 1 and Sector 0 topology', () => {
   const game = createTopologyGame();
   const room = game.experimentalRooms.find(area => area.roomNumber === 1);
   const hallway = game.experimentalRooms.find(area => area.roomNumber === 0);

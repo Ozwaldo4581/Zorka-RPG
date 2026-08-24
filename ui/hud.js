@@ -14,7 +14,7 @@ export class HUD {
 
         this.drawMinimap(ctx, players, asteroids, camera, swapUI, minimapContext);
         this.drawScoreboard(ctx, players, swapUI, minimapContext?.gameMode);
-        this.drawShopPrompts(ctx, minimapContext?.shopEligible, minimapContext?.shopMenuOpen);
+        this.drawShopPrompts(ctx, minimapContext?.currentArea, minimapContext?.shopEligible, minimapContext?.shopMenuOpen);
         
         if (isSplitScreen) {
             // Local PVP: Two meters, centered between boxes and center line
@@ -37,18 +37,20 @@ export class HUD {
         }
     }
 
-    drawShopPrompts(ctx, shopEligible, shopMenuOpen) {
-        if (!shopEligible || shopMenuOpen) return;
+    drawShopPrompts(ctx, currentArea, shopEligible, shopMenuOpen) {
+        if (!currentArea?.displayText || shopMenuOpen) return;
         ctx.save();
         ctx.textAlign = 'center';
         ctx.fillStyle = '#fff';
         ctx.shadowColor = '#000';
         ctx.shadowBlur = 12;
         ctx.font = 'bold 28px Orbitron';
-        ctx.fillText('Purchase Upgrades', 960, 790);
-        ctx.font = '18px Orbitron';
-        ctx.fillStyle = '#00ffff';
-        ctx.fillText('Press Space Bar to Enter Shop', 960, 830);
+        ctx.fillText(currentArea.displayText, 960, 790);
+        if (shopEligible) {
+            ctx.font = '18px Orbitron';
+            ctx.fillStyle = '#00ffff';
+            ctx.fillText('Press Space Bar to Enter Shop', 960, 830);
+        }
         ctx.restore();
     }
 
@@ -340,13 +342,12 @@ export class HUD {
     drawPowerUpMeter(ctx, player, centerX, startY, maxCols = 5) {
         if (!player || player.isEventHorizon) return; // Hide power-up meter for Event Horizon
 
-        const slot3Name = 'Laser';
         const slots = [
-            { name: player.slot1Type || 'Antigun', type: 'GUN' },
-            { name: 'Missile', type: 'ADD-ON' },
-            { name: slot3Name, type: player.isMartian ? 'UPGRADE' : 'GUN' },
+            { name: 'Antigun', type: 'GUN' },
+            { name: 'Doublegun', type: 'GUN' },
+            { name: 'Laser', type: player.isMartian ? 'UPGRADE' : 'GUN' },
             { name: 'Orb', type: 'WEAPON' },
-            { name: 'Ghost', type: 'ADD-ON' }
+            { name: 'Missile', type: 'ADD-ON' }
         ];
 
         const slotWidth = 90;
@@ -370,9 +371,9 @@ export class HUD {
 
             const primaryAmmo = player.getPrimaryAmmoState?.();
             const missileAmmo = player.getMissileAmmoState?.();
-            const ammoState = i === 1 && missileAmmo?.capacity > 0
+            const ammoState = i === 4 && missileAmmo?.capacity > 0
                 ? missileAmmo
-                : i === 0 && primaryAmmo?.family === 'Ballistic'
+                : (i === 0 || i === 1) && primaryAmmo?.family === 'Ballistic'
                     ? primaryAmmo
                     : i === 2 && primaryAmmo?.family === 'Laser'
                         ? primaryAmmo
@@ -380,9 +381,8 @@ export class HUD {
             if (ammoState) this.drawAmmoMeter(ctx, ammoState, x + slotWidth / 2, y - 12, slotWidth - 14);
 
             const slotNumber = i + 1;
-            const isCurrent = slotNumber === player.powerUpCapsules;
-            const isSelectable = typeof player.canActivateCapsuleSlot !== 'function'
-                || player.canActivateCapsuleSlot(slotNumber);
+            const isCurrent = player.equippedPrimaryGun === slot.name;
+            const isSelectable = player.ownsWeapon?.(slot.name) || false;
 
             // Box
             ctx.strokeStyle = isSelectable ? (isCurrent ? player.color : '#333') : '#555';
@@ -540,11 +540,7 @@ export class HUD {
             : null;
         const usesRoom = Boolean(minimapContext?.usesRooms && room);
         const scale = mapWidth / WORLD_WIDTH;
-        // Adventure shows the complete playable world, deliberately excluding
-        // the terminal Sector 0 Shop so its location remains an exploration cue.
-        const topologyAreas = usesRoom
-            ? minimapContext.rooms.filter(area => area.role !== 'SHOP')
-            : [];
+        const topologyAreas = usesRoom ? minimapContext.rooms : [];
         const topologyBounds = usesRoom ? topologyAreas.reduce((bounds, area) => ({
             left: Math.min(bounds.left, area.bounds.left),
             right: Math.max(bounds.right, area.bounds.right),

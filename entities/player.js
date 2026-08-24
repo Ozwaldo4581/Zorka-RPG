@@ -37,6 +37,7 @@ export const MIN_SHIELD_RECHARGE_DELAY = 1;
 export const BASE_PLAYER_HP = 5;
 const HUMAN_STARTING_HP_BONUS = 5;
 export const DAMAGE_PULSE_DURATION = 0.35;
+export const SHOP_WEAPON_IDS = Object.freeze(['Antigun', 'Doublegun', 'Missile', 'Laser', 'Orb', 'Ghost']);
 
 export function getHPBlockLayout(maxHP, totalWidth = 120, normalGap = 2, minimumBlockWidth = 0.5) {
     const blockCount = Math.max(1, Math.floor(Number(maxHP) || 1));
@@ -75,7 +76,8 @@ export class Player {
         this.powerUpCapsules = 0;
         // Session-local RPG resource. Game owns collection outcomes; Player owns the count.
         this.scrap = 0;
-        this.shopUpgradeTiers = [0, 0, 0, 0, 0];
+        this.weaponPurchaseTiers = Object.seal(Object.fromEntries(SHOP_WEAPON_IDS.map(id => [id, 0])));
+        this.equippedPrimaryGun = null;
         this.maxPowerUpSlots = 5;
         this.activeGun = 'Normal'; // Ballistic forms: Normal/Base Gun, Antigun, Double
         this.weaponStreamCounts = { Laser: 0, Antigun: 0, Double: 0, Orb: 0 };
@@ -177,6 +179,38 @@ export class Player {
         const applied = this.activatePowerUp();
         if (!applied) this.powerUpCapsules = previousCapsules;
         return applied;
+    }
+
+    getWeaponPurchaseTier(weaponId) {
+        return Number.isInteger(this.weaponPurchaseTiers?.[weaponId]) ? this.weaponPurchaseTiers[weaponId] : 0;
+    }
+
+    ownsWeapon(weaponId) {
+        return this.getWeaponPurchaseTier(weaponId) > 0;
+    }
+
+    equipPurchasedWeapon(weaponId) {
+        if (!this.ownsWeapon(weaponId)) return false;
+        this.equippedPrimaryGun = weaponId;
+        const activeGun = weaponId === 'Doublegun' ? 'Double' : weaponId;
+        this.activeGun = ['Antigun', 'Double', 'Laser', 'Orb'].includes(activeGun) ? activeGun : 'Normal';
+        if (this.activeGun !== 'Normal') {
+            this.weaponStreamCounts[this.activeGun] = this.getWeaponPurchaseTier(weaponId);
+        }
+        this.hasMissile = this.getWeaponPurchaseTier('Missile') > 0;
+        this.missileLevel = this.getWeaponPurchaseTier('Missile');
+        this.ghosts = Array.from({ length: Math.min(2, this.getWeaponPurchaseTier('Ghost')) }, () => ({
+            x: this.x, y: this.y, rotation: this.rotation
+        }));
+        this.resetClip();
+        return true;
+    }
+
+    purchaseWeaponTier(weaponId) {
+        if (!SHOP_WEAPON_IDS.includes(weaponId)) return false;
+        this.weaponPurchaseTiers[weaponId]++;
+        this.equippedPrimaryGun = weaponId;
+        return this.equipPurchasedWeapon(weaponId);
     }
 
     getXPRequirement(level = this.level) {
