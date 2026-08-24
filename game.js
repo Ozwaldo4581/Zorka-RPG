@@ -5,6 +5,7 @@ import { Projectile } from './entities/projectile.js';
 import { Camera, DEFAULT_GAMEPLAY_ZOOM } from './camera.js';
 import { HUD } from './ui/hud.js';
 import { AudioManager } from './audio_manager.js';
+import { ExperimentalProfileStore } from './persistence/experimental_profiles.js';
 import {
     checkCollision,
     nearestWrappedDisplacement,
@@ -52,6 +53,11 @@ export const MISSILE_DAMAGE = 3;
 export const RPG_DEBRIS_DROP_CHANCE = 0.33;
 export const RPG_DEBRIS_SCRAP_VALUE = 10;
 export const SPACE_BAR_ROUND_PRICE = 1000;
+export const SHIP_MODIFICATION_PRICE = 500;
+export const SHIP_MODIFICATION_IDS = Object.freeze([
+    'shield', 'shieldRecharge', 'hullProtection', 'hullRecovery', 'fireRate',
+    'reloadSpeed', 'acceleration', 'projectile', 'maxSpeed'
+]);
 export const SECTOR_0_WEAPON_CATALOG = Object.freeze([
     Object.freeze({ id: 'Antigun', label: 'Antigun', prices: Object.freeze([100, 200, 400]) }),
     Object.freeze({ id: 'Doublegun', label: 'Doublegun', prices: Object.freeze([100, 200, 400]) }),
@@ -268,7 +274,7 @@ export class Game {
         // null makes it clear that no Supabase/network code is required to
         // launch or play the local game.
         this.network = null;
-        // Adventure profiles are intentionally absent from the RPG runtime.
+        this.experimentalProfiles = new ExperimentalProfileStore();
         this.selectedExperimentalProfileSlot = null;
         this.pendingExperimentalProfileSlot = null;
 
@@ -1329,6 +1335,9 @@ export class Game {
         document.querySelectorAll('[data-shop-utility]').forEach(button => button.addEventListener('click', () => {
             Game.prototype.handleUtilityShopIntent.call(this, button.dataset.shopUtility);
         }));
+        document.querySelectorAll('[data-ship-modification]').forEach(button => button.addEventListener('click', () => {
+            Game.prototype.handleShipModificationIntent.call(this, button.dataset.shipModification);
+        }));
         document.getElementById('btn-buy-round')?.addEventListener('click', event => {
             event.stopPropagation();
             Game.prototype.handleSpaceBarRoundIntent.call(this);
@@ -1457,6 +1466,7 @@ export class Game {
         if (player.scrap < offer.price || !player.purchaseWeaponTier(weaponId)) return false;
         player.scrap -= offer.price;
         Game.prototype.refreshSector0ShopMenu.call(this);
+        Game.prototype.saveExperimentalProfile.call(this, player);
         return true;
     }
 
@@ -1502,6 +1512,7 @@ export class Game {
         if (!offer || offer.owned || player.scrap < offer.price || !player.purchaseUtility(utilityId)) return false;
         player.scrap -= offer.price;
         Game.prototype.refreshUtilityShopMenu.call(this);
+        Game.prototype.saveExperimentalProfile.call(this, player);
         return true;
     }
 
@@ -1533,6 +1544,27 @@ export class Game {
         offer.encounter.npcLevel++;
         Game.prototype.reconcileExperimentalOrdinaryNPCPopulation.call(this, offer.room.id);
         Game.prototype.refreshSpaceBarMenu.call(this);
+        Game.prototype.saveExperimentalProfile.call(this, player);
+        return true;
+    }
+
+    handleShipModificationIntent(upgradeId) {
+        const player = Game.prototype.getHumanPlayer.call(this);
+        const area = Game.prototype.getHumanSector0InteractionArea.call(this);
+        if (!this.isShopMenuOpen || this.activeSector0Shop !== 'SHIP_MODIFICATION'
+            || area?.interaction !== 'SHIP_MODIFICATION' || !SHIP_MODIFICATION_IDS.includes(upgradeId)
+            || player?.scrap < SHIP_MODIFICATION_PRICE) return false;
+        player.scrap -= SHIP_MODIFICATION_PRICE;
+        player.shipUpgrades[upgradeId]++;
+        if (upgradeId === 'projectile') player.projectileUpgradeCount++;
+        if (upgradeId === 'shield') player.applyShieldUpgrade();
+        if (upgradeId === 'shieldRecharge') {
+            player.shieldRechargeUpgradeCount++;
+            player.updateShieldRechargeDelay();
+        }
+        if (upgradeId === 'hullProtection') player.increaseMaxHP();
+        if (upgradeId === 'acceleration') player.speedUpgradeCount++;
+        Game.prototype.saveExperimentalProfile.call(this, player);
         return true;
     }
 
@@ -2365,17 +2397,7 @@ export class Game {
     }
 
     handleLevelUpgradeKey(code) {
-        const choices = {
-            Digit1: 'projectile', Numpad1: 'projectile',
-            Digit2: 'speed', Numpad2: 'speed',
-            Digit3: 'shield', Numpad3: 'shield'
-        };
-        const choice = choices[code];
-        if (!choice || !this.isInGameplayState() || this.isPauseMenuOpen || this.activeModal) return false;
-        const player = this.players.find(candidate => !candidate.isNPC && candidate.controlMode === 'KEYBOARD');
-        if (!player || player.isDead || player.pendingLevelUps <= 0) return false;
-        player.applyLevelUpgrade(choice);
-        return true;
+        return false;
     }
 
     handleUtilityKeyDown(code) {
@@ -2405,7 +2427,7 @@ export class Game {
 
     updateHeldUtilityIntents(player) {
         if (!player || player.isDead || player.isNPC || this.isShopMenuOpen || this.isPauseMenuOpen) return;
-        const utilityDigitsAvailable = player.pendingLevelUps <= 0;
+        const utilityDigitsAvailable = true;
         player.scrapCollectorActive = utilityDigitsAvailable
             && player.ownsUtility('Scrap Collector') && Boolean(this.keys.Digit1);
         const wantsHook = utilityDigitsAvailable && player.ownsUtility('Beam Hook') && Boolean(this.keys.Digit2);
@@ -2916,6 +2938,8 @@ export class Game {
                 this.selectedExperimentalProfileSlot,
                 {
                     ...player.getPersistentProgressionSnapshot(),
+                    encounterLevel: Game.prototype.getExperimentalEncounterState.call(
+                        this, player.experimentalLastCombatRoomId || 'experimental-room-1')?.npcLevel || 1,
                     newGamePlusCycle: this.experimentalNewGamePlusCycle || 0,
                     unlockedShortcutIds: [...(this.experimentalUnlockedShortcutIds || [])]
                 }
@@ -3137,9 +3161,9 @@ export class Game {
         return context.npcCandidatesByArea.get(areaId);
     }
 
-    startExperimentalMode() {
-        this.experimentalNewGamePlusCycle = 0;
-        this.experimentalUnlockedShortcutIds = new Set();
+    startExperimentalMode(profile = null) {
+        this.experimentalNewGamePlusCycle = Math.max(0, profile?.newGamePlusCycle || 0);
+        this.experimentalUnlockedShortcutIds = new Set(profile?.unlockedShortcutIds || []);
         this.closePauseMenu();
         this.hideArcadeGameOver();
         Game.prototype.hideVictoryScreen.call(this);
@@ -3153,10 +3177,18 @@ export class Game {
         this.setupExperimentalMatch();
         const human = this.players.find(player => !player.isNPC);
         if (!human) return false;
-        human.name = 'PLAYER 1';
+        human.name = profile?.name || 'EARTHLING';
         human.color = chooseRandomPlayerColor();
+        if (profile) human.applyPersistentProgression(profile);
         human.resetTransientLifeState();
         this.initializeExperimentalWorldState();
+        if (profile?.encounterLevel) {
+            const encounter = Game.prototype.getExperimentalEncounterState.call(this, 'experimental-room-1');
+            if (encounter) {
+                encounter.npcLevel = Math.max(1, Math.floor(profile.encounterLevel));
+                Game.prototype.reconcileExperimentalOrdinaryNPCPopulation.call(this, 'experimental-room-1');
+            }
+        }
         document.getElementById('menu-overlay').classList.add('hidden');
         this.experimentalCameraState = { previousZoom: this.camera.zoom };
         this.camera.zoom = DEFAULT_GAMEPLAY_ZOOM;
@@ -4984,11 +5016,10 @@ export class Game {
         if (source && Number.isFinite(source.x) && Number.isFinite(source.y)) {
             Game.prototype.createFloatingText.call(this, `+${amount} XP`, source.x, source.y - (source.radius || 0) - 18, '#ffff66', source.roomId);
         }
-        if (levelsGained > 0) {
-            Game.prototype.createFloatingText.call(this, 'Lvl Up!', killer.x, killer.y - killer.radius - 24, killer.color, killer.roomId);
-        }
-        if (killer.isNPC) killer.resolveNPCLevelUps();
-        else Game.prototype.saveExperimentalProfile.call(this, killer);
+        if (levelsGained > 0) Game.prototype.createFloatingText.call(
+            this, `LEVEL UP\n+${levelsGained} HP\n+${levelsGained} Shield`,
+            killer.x, killer.y - killer.radius - 24, killer.color, killer.roomId, killer);
+        if (!killer.isNPC) Game.prototype.saveExperimentalProfile.call(this, killer);
         return levelsGained;
     }
 
@@ -5117,7 +5148,7 @@ export class Game {
                     if (p.isDecoy) {
                         this.createExplosion(p.x, p.y, 60, p.roomId);
                         this.removeProjectile(p);
-                        this.playerDeath(player, p.owner);
+                        Game.prototype.resolvePlayerDamage.call(this, player, p.damage || 1, p.owner);
                     } else if (p.isMissile || p.isSkinnyMissile) {
                         if (p.isSkinnyMissile) this.detonateAoEProjectile(p);
                         else this.detonateMissile(p);
@@ -5132,7 +5163,7 @@ export class Game {
                             // Lasers are destroyed by players but pierce everything else
                             this.removeProjectile(p);
                         }
-                        this.playerDeath(player, p.owner);
+                        Game.prototype.resolvePlayerDamage.call(this, player, p.damage || 1, p.owner);
                     }
                     if (!p.isTentacle) break;
                 }
@@ -5251,7 +5282,7 @@ export class Game {
                 if (checkCollision(player, h)) {
                     if (this.gameState === GAME_MODE.EXPERIMENTAL && h.isDebris) {
                         if (!Game.prototype.isHumanPlayerEntity.call(this, player)) continue;
-                        player.addScrap(RPG_DEBRIS_SCRAP_VALUE);
+                        Game.prototype.awardScrap.call(this, player, RPG_DEBRIS_SCRAP_VALUE);
                         h.isDestroyed = true;
                         Game.prototype.unindexExperimentalEntity.call(this, 'hazards', h);
                         const debrisIndex = this.hazards.indexOf(h);
@@ -5383,7 +5414,7 @@ export class Game {
             if (!Game.prototype.areExperimentalEntitiesCoLocated.call(this, p, player)) continue;
             const dist = Math.hypot(player.x - p.x, player.y - p.y);
             if (dist < radius + player.radius && !this.isExperimentalBlastBlocked(p, player)) {
-                this.playerDeath(player, p.owner);
+                Game.prototype.resolvePlayerDamage.call(this, player, p.damage || 1, p.owner);
             }
         }
     }
@@ -5526,13 +5557,28 @@ export class Game {
         return this.vfx.at(-1);
     }
 
-    createFloatingText(text, x, y, color = '#fff', roomId = null) {
+    awardScrap(player, amount) {
+        if (!player || typeof player.addScrap !== 'function') return 0;
+        const gained = player.addScrap(amount);
+        if (gained > 0) {
+            Game.prototype.createFloatingText.call(this, `+${gained} Scrap`, player.x,
+                player.y - player.radius - 18, '#ffff66', player.roomId, player);
+            Game.prototype.saveExperimentalProfile.call(this, player);
+        }
+        return gained;
+    }
+
+    createFloatingText(text, x, y, color = '#fff', roomId = null, target = null) {
         if (!Array.isArray(this.vfx)) this.vfx = [];
         const effect = {
-            text, x, y, color, roomId, life: 1.25,
+            text, x, y, color, roomId, target, offsetY: y - (target?.y ?? y), life: 1.25,
             update(dt) {
                 this.life -= dt;
-                this.y -= 28 * dt;
+                if (this.target && !this.target.isEliminated) {
+                    this.x = this.target.x;
+                    this.y = this.target.y + this.offsetY;
+                    this.roomId = this.target.roomId;
+                }
                 if (this.life <= 0) this.finished = true;
             },
             draw(ctx, assets, camera) {
@@ -5542,7 +5588,7 @@ export class Game {
                 ctx.font = 'bold 18px Orbitron';
                 ctx.textAlign = 'center';
                 ctx.fillStyle = this.color;
-                ctx.fillText(this.text, 0, 0);
+                String(this.text).split('\n').forEach((line, index) => ctx.fillText(line, 0, index * 22));
                 ctx.restore();
             }
         };

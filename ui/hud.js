@@ -25,15 +25,12 @@ export class HUD {
             this.drawPowerUpMeter(ctx, players[1], 1270, 980, 3);
             this.drawXPBar(ctx, players[0], 650, 980, 3);
             this.drawXPBar(ctx, players[1], 1270, 980, 3);
-            this.drawLevelUpChoices(ctx, players[0], 650, 74);
-            this.drawLevelUpChoices(ctx, players[1], 1270, 74);
             this.drawSpeedMeter(ctx, players[0], 650, 980, 3);
             this.drawSpeedMeter(ctx, players[1], 1270, 980, 3);
         } else {
             // Solo: the six primary weapons share one bottom-row selection surface.
             this.drawPowerUpMeter(ctx, players[0], 1920 / 2, 980, 6);
             this.drawXPBar(ctx, players[0], 1920 / 2, 980, 6);
-            this.drawLevelUpChoices(ctx, players[0], 1920 / 2, 74);
             this.drawSpeedMeter(ctx, players[0], 1920 / 2, 980, 6);
         }
 
@@ -298,7 +295,7 @@ export class HUD {
         ctx.font = 'bold 14px Orbitron';
         ctx.fillStyle = player.color || '#fff';
         ctx.textAlign = 'left';
-        ctx.fillText('EARTHLING', x + 10, y + 24);
+        ctx.fillText(this.getPlayerFacingName(player, stats) || 'EARTHLING', x + 10, y + 24);
         ctx.textAlign = 'right';
         ctx.fillText(`Scrap - ${player.scrap || 0}`, x + width - 10, y + 24);
 
