@@ -977,15 +977,16 @@
     <div id="ship-modification-menu" class="hidden" data-sector-0-shop-menu role="dialog" aria-modal="true" aria-labelledby="ship-modification-title">
       <div class="shop-panel">
         <h2 id="ship-modification-title">Modify Ship</h2>
+        <div id="ship-modification-balance" class="shop-balance">Scrap - 0</div>
         <div class="shop-grid">
-          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" disabled>Increase Shield</button></div>
-          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" disabled>Increase Shield Recharge Rate</button></div>
-          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" disabled>Increase Hull Protection</button></div>
-          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" disabled>Increase Hull Recovery Rate</button></div>
-          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" disabled>Increase Fire Rate</button></div>
-          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" disabled>Increase Reload Speed</button></div>
-          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" disabled>Increase Acceleration</button></div>
+          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" data-ship-modification="shield">Increase Shield</button></div>
+          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" data-ship-modification="shieldRecharge">Increase Shield Recharge Rate</button></div>
+          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" data-ship-modification="hullProtection">Increase Hull Protection</button></div>
+          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" data-ship-modification="hullRecovery">Increase Hull Recovery Rate</button></div>
           <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" data-ship-modification="projectile">Increase Projectile</button></div>
+          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" data-ship-modification="fireRate">Increase Fire Rate</button></div>
+          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" data-ship-modification="reloadSpeed">Increase Reload Speed</button></div>
+          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" data-ship-modification="acceleration">Increase Acceleration</button></div>
           <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" data-ship-modification="maxSpeed">Increase Max Speed</button></div>
         </div>
         <div style="text-align:center"><button class="menu-button" data-stub-shop-back>BACK</button></div>

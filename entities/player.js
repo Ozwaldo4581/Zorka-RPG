@@ -472,11 +472,30 @@ export class Player {
 
     getEffectiveThrust() {
         const movementCoefficient = this.isNPC ? NPC_MOVEMENT_COEFFICIENT : HUMAN_MOVEMENT_COEFFICIENT;
-        return this.thrust * this.getSpeedMultiplier() * movementCoefficient;
+        return this.thrust * this.getSpeedMultiplier() * movementCoefficient
+            * this.getShipUpgradeRateMultiplier('acceleration');
     }
 
     getNormalShipSpeedCap() {
-        return NORMAL_SHIP_SPEED_CAP * (1 + (this.shipUpgrades?.maxSpeed || 0) * 0.1);
+        return NORMAL_SHIP_SPEED_CAP * (1 + Math.min(5, this.shipUpgrades?.maxSpeed || 0) / 5);
+    }
+
+    getShipUpgradeRateMultiplier(upgradeId) {
+        const level = Math.min(10, Math.max(0, Math.floor(this.shipUpgrades?.[upgradeId] || 0)));
+        return 1 + level * 0.2;
+    }
+
+    getEffectivePrimaryShotInterval(baseInterval) {
+        const level = Math.max(0, Math.floor(this.shipUpgrades?.fireRate || 0));
+        return baseInterval / (1 + Math.log1p(level));
+    }
+
+    getEffectivePrimaryReloadDuration() {
+        return CLIP_RELOAD_DURATION / this.getShipUpgradeRateMultiplier('reloadSpeed');
+    }
+
+    getEffectiveHPRechargeDelay() {
+        return this.hpRechargeDelay / this.getShipUpgradeRateMultiplier('hullRecovery');
     }
 
     getPersistentProgressionSnapshot() {
@@ -528,11 +547,11 @@ export class Player {
         this.equippedPrimaryGun = PRIMARY_WEAPON_IDS.includes(snapshot?.equippedPrimaryGun)
             ? snapshot.equippedPrimaryGun : 'Ballistic';
         this.pendingLevelUps = 0;
-        this.maxHP = BASE_PLAYER_HP + HUMAN_STARTING_HP_BONUS + this.level;
+        this.maxHP = BASE_PLAYER_HP + HUMAN_STARTING_HP_BONUS + this.level + this.shipUpgrades.hullProtection;
         this.restoreHP();
         if (this.isExperimentalFleeingNPC) this.baselineMaxShieldCharges = 0;
         this.maxShieldCharges = this.isExperimentalFleeingNPC
-            ? 0 : this.baselineMaxShieldCharges + (this.isNPC ? 0 : this.level);
+            ? 0 : this.baselineMaxShieldCharges + (this.isNPC ? 0 : this.level + this.shipUpgrades.shield);
         this.updateShieldRechargeDelay();
         this.restoreShieldCharges(this.maxShieldCharges);
         this.restorePurchasedWeaponLoadout();
@@ -759,7 +778,8 @@ export class Player {
     }
 
     getStandardProjectileCapacity() {
-        return BASE_PROJECTILE_CAPACITY + this.projectileUpgradeCount * PROJECTILE_CAPACITY_UPGRADE;
+        return BASE_PROJECTILE_CAPACITY + this.projectileUpgradeCount * PROJECTILE_CAPACITY_UPGRADE
+            + (this.shipUpgrades?.projectile || 0);
     }
 
     getClipCapacity() {
@@ -827,7 +847,7 @@ export class Player {
 
     beginPrimaryReload() {
         if (this.clipReloadTimer > 0 || this.clipRounds >= this.getClipCapacity()) return false;
-        this.clipReloadTimer = CLIP_RELOAD_DURATION;
+        this.clipReloadTimer = this.getEffectivePrimaryReloadDuration();
         return true;
     }
 
@@ -1154,10 +1174,9 @@ export class Player {
     getShieldRechargeDelay() {
         const baseDelay = Math.max(0, Number(this.baseShieldRechargeDelay) || 0);
         if (baseDelay === 0) return 0;
-        const level = Math.min(this.maxShieldRechargeUpgrades,
-            Math.max(0, Math.floor(Number(this.shieldRechargeUpgradeCount) || 0)));
-        return Math.max(MIN_SHIELD_RECHARGE_DELAY,
-            baseDelay - (baseDelay - MIN_SHIELD_RECHARGE_DELAY) * level / this.maxShieldRechargeUpgrades);
+        const levelRate = 1 + Math.min(this.maxShieldRechargeUpgrades,
+            Math.max(0, Math.floor(Number(this.shieldRechargeUpgradeCount) || 0))) * 0.2;
+        return baseDelay / (levelRate * this.getShipUpgradeRateMultiplier('shieldRecharge'));
     }
 
     updateShieldRechargeDelay() {
@@ -1257,7 +1276,7 @@ export class Player {
     takeHPDamage() {
         if (this.currentHP <= 0) return false;
         this.currentHP = Math.max(0, this.currentHP - 1);
-        this.hpRechargeTimer = this.hpRechargeDelay;
+        this.hpRechargeTimer = this.getEffectiveHPRechargeDelay();
         return this.currentHP > 0;
     }
 
@@ -1996,9 +2015,10 @@ export class Player {
             
             const baseProjectile = this.resolveBaseProjectile();
             const family = this.getWeaponFamily();
-            this.shotTimer = family === 'Laser'
+            const baseInterval = family === 'Laser'
                 ? LASER_SHOT_INTERVAL
                 : family === 'Orb' ? ORB_SHOT_INTERVAL : BALLISTIC_SHOT_INTERVAL;
+            this.shotTimer = this.getEffectivePrimaryShotInterval(baseInterval);
 
             // Main Gun Fire
             const mainProjs = this.getGunProjectiles(this.x, this.y, this.rotation, baseProjectile);

@@ -55,9 +55,20 @@ export const RPG_DEBRIS_SCRAP_VALUE = 10;
 export const SPACE_BAR_ROUND_PRICE = 1000;
 export const SHIP_MODIFICATION_PRICE = 500;
 export const SHIP_MODIFICATION_IDS = Object.freeze([
-    'shield', 'shieldRecharge', 'hullProtection', 'hullRecovery', 'fireRate',
-    'reloadSpeed', 'acceleration', 'projectile', 'maxSpeed'
+    'shield', 'shieldRecharge', 'hullProtection', 'hullRecovery', 'projectile',
+    'fireRate', 'reloadSpeed', 'acceleration', 'maxSpeed'
 ]);
+export const SHIP_MODIFICATION_CAPS = Object.freeze({
+    shield: null,
+    shieldRecharge: 10,
+    hullProtection: null,
+    hullRecovery: 10,
+    projectile: 10,
+    fireRate: null,
+    reloadSpeed: 10,
+    acceleration: 10,
+    maxSpeed: 5
+});
 export const SECTOR_0_WEAPON_CATALOG = Object.freeze([
     Object.freeze({ id: 'Antigun', label: 'Antigun', prices: Object.freeze([100, 200, 400]) }),
     Object.freeze({ id: 'Doublegun', label: 'Doublegun', prices: Object.freeze([100, 200, 400]) }),
@@ -1470,6 +1481,7 @@ export class Game {
         menu?.classList.remove('hidden');
         if (shopType === 'WEAPONS_SHOP') Game.prototype.refreshSector0ShopMenu.call(this);
         if (shopType === 'UTILITY_SHOP') Game.prototype.refreshUtilityShopMenu.call(this);
+        if (shopType === 'SHIP_MODIFICATION') Game.prototype.refreshShipModificationMenu.call(this);
         if (shopType === 'SPACE_BAR') Game.prototype.refreshSpaceBarMenu.call(this);
         this.setInitialMenuFocus?.(menu);
         return true;
@@ -1588,19 +1600,36 @@ export class Game {
         const area = Game.prototype.getHumanSector0InteractionArea.call(this);
         if (!this.isShopMenuOpen || this.activeSector0Shop !== 'SHIP_MODIFICATION'
             || area?.interaction !== 'SHIP_MODIFICATION' || !SHIP_MODIFICATION_IDS.includes(upgradeId)
-            || player?.scrap < SHIP_MODIFICATION_PRICE) return false;
+            || !Game.prototype.canPurchaseShipModification.call(this, player, upgradeId)
+            || player.scrap < SHIP_MODIFICATION_PRICE) return false;
         player.scrap -= SHIP_MODIFICATION_PRICE;
         player.shipUpgrades[upgradeId]++;
-        if (upgradeId === 'projectile') player.projectileUpgradeCount++;
         if (upgradeId === 'shield') player.applyShieldUpgrade();
-        if (upgradeId === 'shieldRecharge') {
-            player.shieldRechargeUpgradeCount++;
-            player.updateShieldRechargeDelay();
-        }
+        if (upgradeId === 'shieldRecharge') player.updateShieldRechargeDelay();
         if (upgradeId === 'hullProtection') player.increaseMaxHP();
-        if (upgradeId === 'acceleration') player.speedUpgradeCount++;
+        Game.prototype.refreshShipModificationMenu.call(this);
         Game.prototype.saveExperimentalProfile.call(this, player);
         return true;
+    }
+
+    canPurchaseShipModification(player, upgradeId) {
+        if (!player || !SHIP_MODIFICATION_IDS.includes(upgradeId)) return false;
+        const cap = SHIP_MODIFICATION_CAPS[upgradeId];
+        return cap === null || player.shipUpgrades[upgradeId] < cap;
+    }
+
+    refreshShipModificationMenu() {
+        if (typeof document === 'undefined') return;
+        const player = Game.prototype.getHumanPlayer.call(this);
+        const balance = document.getElementById('ship-modification-balance');
+        if (balance) balance.textContent = `Scrap - ${player?.scrap || 0}`;
+        document.querySelectorAll?.('[data-ship-modification]').forEach(button => {
+            const canPurchase = Game.prototype.canPurchaseShipModification.call(
+                this, player, button.dataset.shipModification);
+            const price = button.closest('.shop-row')?.querySelector('.shop-price');
+            if (price) price.textContent = SHIP_MODIFICATION_PRICE.toLocaleString('en-US');
+            button.disabled = !canPurchase || player.scrap < SHIP_MODIFICATION_PRICE;
+        });
     }
 
     refreshSpaceBarMenu() {
