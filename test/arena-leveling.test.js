@@ -92,6 +92,22 @@ test('new NPCs initialize at a target level with consistent XP and resolved upgr
     }
 });
 
+test('NPC capsule bonuses derive from authoritative level minus three', () => {
+    for (const [targetLevel, expectedCapsules] of [[2, 0], [3, 0], [4, 1], [5, 2], [10, 7]]) {
+        const npc = new Player(0, 0);
+        npc.isNPC = true;
+        let assignedCapsules = null;
+        npc.applyNPCCapsuleBudget = count => {
+            assignedCapsules = count;
+            return count;
+        };
+
+        assert.equal(npc.initializeNPCLevel(targetLevel, () => 0), true);
+        assert.equal(npc.level, targetLevel);
+        assert.equal(assignedCapsules, expectedCapsules);
+    }
+});
+
 test('standard match composition starts humans at level 0 and NPCs at level 1', () => {
     const makeGame = () => ({
         players: [], p1ControlMode: 'KEYBOARD', botAggressionLevel: 3,
