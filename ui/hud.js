@@ -522,10 +522,28 @@ export class HUD {
             : null;
         const usesRoom = Boolean(minimapContext?.usesRooms && room);
         const scale = mapWidth / WORLD_WIDTH;
+        const topologyAreas = usesRoom
+            ? [room, ...(room.connectedAreaIds || []).map(id =>
+                minimapContext.rooms.find(candidate => candidate.id === id)).filter(Boolean)]
+            : [];
+        const topologyBounds = usesRoom ? {
+            left: Math.min(...topologyAreas.map(area => area.bounds.left)),
+            right: Math.max(...topologyAreas.map(area => area.bounds.right)),
+            top: Math.min(...topologyAreas.map(area => area.bounds.top)),
+            bottom: Math.max(...topologyAreas.map(area => area.bounds.bottom))
+        } : null;
+        const topologyScale = usesRoom ? Math.min(
+            mapWidth / (topologyBounds.right - topologyBounds.left),
+            mapHeight / (topologyBounds.bottom - topologyBounds.top)
+        ) : scale;
+        const topologyOffsetX = usesRoom
+            ? x + (mapWidth - (topologyBounds.right - topologyBounds.left) * topologyScale) / 2 : x;
+        const topologyOffsetY = usesRoom
+            ? y + (mapHeight - (topologyBounds.bottom - topologyBounds.top) * topologyScale) / 2 : y;
         const positionOnMap = entity => usesRoom
             ? {
-                x: x + ((entity.x - room.bounds.left) / room.width) * mapWidth,
-                y: y + ((entity.y - room.bounds.top) / room.height) * mapHeight
+                x: topologyOffsetX + (entity.x - topologyBounds.left) * topologyScale,
+                y: topologyOffsetY + (entity.y - topologyBounds.top) * topologyScale
             }
             : { x: x + entity.x * scale, y: y + entity.y * scale };
         const belongsOnMap = entity => !minimapContext?.usesRooms
@@ -559,7 +577,7 @@ export class HUD {
             ctx.strokeStyle = '#00ffff';
             ctx.lineWidth = 1;
             ctx.beginPath();
-            room.walls.filter(wall => wall.id.includes('-interior-')).forEach(wall => {
+            topologyAreas.flatMap(area => area.walls).forEach(wall => {
                 const start = positionOnMap(wall.start);
                 const end = positionOnMap(wall.end);
                 ctx.moveTo(start.x, start.y);

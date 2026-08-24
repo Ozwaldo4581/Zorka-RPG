@@ -15,6 +15,10 @@ export const EXPERIMENTAL_HALLWAY_LENGTH = 4000;
 // A 960-unit entrance plus 240 units of wall shoulder on either side gives
 // transformed human ships ample room to turn and slide without widening doors.
 export const EXPERIMENTAL_HALLWAY_WIDTH = 1440;
+// The terminal Sector 0 hallway is intentionally half the width of a major
+// connector. Its depth derives from this single tuning dimension.
+export const EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH = EXPERIMENTAL_HALLWAY_WIDTH / 2;
+export const EXPERIMENTAL_SECTOR_0_DEAD_END_DEPTH = EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH * 2;
 const DOOR_TRANSITION_TOLERANCE = 16;
 export const EXPERIMENTAL_WALL_INDEX_CELL_SIZE = 512;
 const FULL_ARENA_POPULATION = Object.freeze({
@@ -370,14 +374,15 @@ function buildWalls(shell, entranceShells, interiorWalls = []) {
             walls.push(wall(`${shell.id}-wall-${side}`, x1, y1, x2, y2));
             continue;
         }
-        const min = entrance.openingCenter - EXPERIMENTAL_ENTRANCE_WIDTH / 2;
-        const max = entrance.openingCenter + EXPERIMENTAL_ENTRANCE_WIDTH / 2;
+        const openingWidth = entrance.openingWidth || EXPERIMENTAL_ENTRANCE_WIDTH;
+        const min = entrance.openingCenter - openingWidth / 2;
+        const max = entrance.openingCenter + openingWidth / 2;
         if (orientation === 'HORIZONTAL') {
-            walls.push(wall(`${shell.id}-wall-${side}-right`, Math.max(x1, x2), boundary, max, boundary));
-            walls.push(wall(`${shell.id}-wall-${side}-left`, min, boundary, Math.min(x1, x2), boundary));
+            if (Math.max(x1, x2) > max) walls.push(wall(`${shell.id}-wall-${side}-right`, Math.max(x1, x2), boundary, max, boundary));
+            if (min > Math.min(x1, x2)) walls.push(wall(`${shell.id}-wall-${side}-left`, min, boundary, Math.min(x1, x2), boundary));
         } else {
-            walls.push(wall(`${shell.id}-wall-${side}-bottom`, boundary, Math.max(y1, y2), boundary, max));
-            walls.push(wall(`${shell.id}-wall-${side}-top`, boundary, min, boundary, Math.min(y1, y2)));
+            if (Math.max(y1, y2) > max) walls.push(wall(`${shell.id}-wall-${side}-bottom`, boundary, Math.max(y1, y2), boundary, max));
+            if (min > Math.min(y1, y2)) walls.push(wall(`${shell.id}-wall-${side}-top`, boundary, min, boundary, Math.min(y1, y2)));
         }
     }
     walls.push(...interiorWalls);
@@ -385,37 +390,66 @@ function buildWalls(shell, entranceShells, interiorWalls = []) {
 }
 
 export function createExperimentalAreas(roomWidth, roomHeight) {
-    const shell = {
+    const roomId = 'experimental-room-1';
+    const hallwayId = 'experimental-sector-0-dead-end-hallway';
+    const roomBounds = boundsAt(0, 0, roomWidth, roomHeight);
+    const hallwayBounds = boundsAt(
+        roomBounds.left - EXPERIMENTAL_SECTOR_0_DEAD_END_DEPTH,
+        (roomBounds.top + roomBounds.bottom - EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH) / 2,
+        EXPERIMENTAL_SECTOR_0_DEAD_END_DEPTH,
+        EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH
+    );
+    const roomShell = {
         ...createExperimentalRoomProgression(1),
         npcCount: 1,
         npcLevel: 1,
-        id: 'experimental-room-1',
+        id: roomId,
         areaType: EXPERIMENTAL_AREA_TYPE.ROOM,
         origin: point(0, 0),
         width: roomWidth,
         height: roomHeight,
-        bounds: boundsAt(0, 0, roomWidth, roomHeight),
+        bounds: roomBounds,
         population: FULL_ARENA_POPULATION,
         npcAggressionSource: 'ARENA_OPTIONS'
     };
-    const walls = buildWalls(shell, []);
-    const b = shell.bounds;
-    return [createExperimentalArea({
-        ...shell,
-        walls,
-        spawnExclusionRegions: [],
-        connectedAreaIds: [],
-        entrances: [],
+    const hallwayShell = {
+        id: hallwayId,
+        areaType: EXPERIMENTAL_AREA_TYPE.HALLWAY,
+        roomNumber: 0,
+        origin: point(hallwayBounds.left, hallwayBounds.top),
+        width: EXPERIMENTAL_SECTOR_0_DEAD_END_DEPTH,
+        height: EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH,
+        bounds: hallwayBounds
+    };
+    const entrance = Object.freeze({
+        ...connectionGeometry(roomShell, hallwayShell),
+        openingWidth: EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH
+    });
+    const wallProperties = {
         wallCollisionThickness: EXPERIMENTAL_WALL_COLLISION_THICKNESS,
         wallVisualCoreThickness: EXPERIMENTAL_WALL_VISUAL_CORE_THICKNESS,
         collisionEpsilon: EXPERIMENTAL_WALL_SEPARATION_EPSILON,
-        maxCorrectionPasses: EXPERIMENTAL_WALL_MAX_CORRECTION_PASSES,
+        maxCorrectionPasses: EXPERIMENTAL_WALL_MAX_CORRECTION_PASSES
+    };
+    return [createExperimentalArea({
+        ...roomShell,
+        walls: buildWalls(roomShell, [entrance]),
+        spawnExclusionRegions: [],
+        connectedAreaIds: [hallwayId],
+        entrances: [entrance],
+        ...wallProperties,
         spawnRegion: Object.freeze({
-            left: b.left + SPAWN_INSET,
-            top: b.top + SPAWN_INSET,
-            right: b.right - SPAWN_INSET,
-            bottom: b.bottom - SPAWN_INSET
+            left: roomBounds.left + SPAWN_INSET,
+            top: roomBounds.top + SPAWN_INSET,
+            right: roomBounds.right - SPAWN_INSET,
+            bottom: roomBounds.bottom - SPAWN_INSET
         })
+    }), createExperimentalArea({
+        ...hallwayShell,
+        walls: buildWalls(hallwayShell, [entrance]),
+        connectedAreaIds: [roomId],
+        entrances: [entrance],
+        ...wallProperties
     })];
 }
 
@@ -444,8 +478,15 @@ export function createExperimentalDoors(areas) {
         const shortcutRole = shortcut
             ? (isShortcutSource ? shortcut.sourceEntrance.role : shortcut.destinationEntrance.role)
             : null;
-        const openingMin = geometry.openingCenter - EXPERIMENTAL_ENTRANCE_WIDTH / 2;
-        const openingMax = geometry.openingCenter + EXPERIMENTAL_ENTRANCE_WIDTH / 2;
+        const openingWidth = area.entrances?.find(entrance =>
+            entrance.orientation === geometry.orientation
+            && entrance.boundaryCoordinate === geometry.boundaryCoordinate)?.openingWidth
+            || connected.entrances?.find(entrance =>
+                entrance.orientation === geometry.orientation
+                && entrance.boundaryCoordinate === geometry.boundaryCoordinate)?.openingWidth
+            || EXPERIMENTAL_ENTRANCE_WIDTH;
+        const openingMin = geometry.openingCenter - openingWidth / 2;
+        const openingMax = geometry.openingCenter + openingWidth / 2;
         const horizontal = geometry.orientation === 'HORIZONTAL';
         const id = `experimental-entrance-${area.id}-${connected.id}`;
         doors.push(Object.freeze({
@@ -453,7 +494,7 @@ export function createExperimentalDoors(areas) {
             shortcutId: shortcut?.id || null, shortcutRole,
             color: shortcut?.color || null, colorName: shortcut?.colorName || null,
             sourceMessage: isShortcutSource ? shortcut?.sourceMessage : null,
-            openingMin, openingMax, openingWidth: EXPERIMENTAL_ENTRANCE_WIDTH,
+            openingMin, openingMax, openingWidth,
             transitionTolerance: DOOR_TRANSITION_TOLERANCE, sharedWallIds: Object.freeze([]),
             blocker: Object.freeze({
                 id: `${id}-blocker`, isDoorBlocker: true, isTwoSided: true,
