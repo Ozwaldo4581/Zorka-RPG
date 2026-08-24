@@ -4605,7 +4605,6 @@ export class Game {
 
     respawnPlayer(player) {
         player.resetTransientLifeState();
-        player.refillMissileClip();
 
         const primaryMusicPlayer = Game.prototype.getPrimaryMusicPlayer.call(this);
         if (!player.isNPC && player === primaryMusicPlayer && this.gameState !== GAME_MODE.ARCADE) {
@@ -5010,11 +5009,6 @@ export class Game {
         player.activeGun = 'Normal';
         player.weaponStreamCounts = { Laser: 0, Antigun: 0, Double: 0, Orb: 0 };
         player.ghosts = []; 
-        player.hasMissile = false;
-        player.missileLevel = 0;
-        player.missileAmmo = 0;
-        player.missileReloadTimer = 0;
-        player.missileShotTimer = 0;
         player.resetClip();
         player.restoreShieldCharges(0);
         player.history = []; // Clear history so ghosts don't snap back to old positions on respawn
