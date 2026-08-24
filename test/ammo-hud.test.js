@@ -6,6 +6,7 @@ import { HUD } from '../ui/hud.js';
 
 const context = () => ({
     fills: [], strokes: [], texts: [],
+    save() {}, restore() {},
     measureText(value) { return { width: String(value).length * 8 }; },
     fillRect(x, y, width, height) { this.fills.push({ x, y, width, height, color: this.fillStyle }); },
     strokeRect(x, y, width, height) { this.strokes.push({ x, y, width, height }); },
@@ -46,7 +47,7 @@ test('ammo reload countdown clamps at zero and formats authoritative time to two
     assert.equal(completed.fills.length, 4);
 });
 
-test('capsule HUD uses name-only titles and renders only equipped-primary plus acquired Missile ammo', () => {
+test('capsule HUD uses the six primary names in order and renders only equipped-primary plus acquired Missile ammo', () => {
     const player = new Player(0, 0);
     player.weaponPurchaseTiers.Antigun = 1;
     player.weaponPurchaseTiers.Doublegun = 1;
@@ -54,8 +55,9 @@ test('capsule HUD uses name-only titles and renders only equipped-primary plus a
     player.selectPrimaryWeapon('Laser');
     const withoutMissile = context();
     new HUD().drawPowerUpMeter(withoutMissile, player, 960, 980, 5);
-    assert.deepEqual(withoutMissile.texts.filter(text => ['Antigun', 'Doublegun', 'Laser', 'Orb', 'Missile'].includes(text.value)).map(text => text.value),
-        ['Antigun', 'Doublegun', 'Laser', 'Orb', 'Missile']);
+    assert.deepEqual(withoutMissile.texts.filter(text => ['Ballistic', 'Antigun', 'Doublegun', 'Laser', 'Orb', 'Ghost'].includes(text.value)).map(text => text.value),
+        ['Ballistic', 'Antigun', 'Doublegun', 'Laser', 'Orb', 'Ghost']);
+    assert.equal(withoutMissile.texts.some(text => text.value === 'Missile'), false);
     assert.equal(withoutMissile.fills.filter(fill => fill.color === '#9a9a9a').length, player.clipRounds);
 
     player.weaponPurchaseTiers.Missile = 2;
@@ -69,4 +71,35 @@ test('capsule HUD uses name-only titles and renders only equipped-primary plus a
     const ballistic = context();
     new HUD().drawPowerUpMeter(ballistic, player, 960, 980, 5);
     assert.equal(ballistic.fills.filter(fill => fill.color === '#9a9a9a').length, player.clipRounds + player.missileAmmo);
+});
+
+test('primary capsule hit regions share render order and exclude the separate Missile status', () => {
+    const hud = new HUD();
+    const player = new Player(0, 0, 1);
+    const boxes = hud.getPrimaryWeaponBoxes();
+    assert.deepEqual(boxes.map(box => box.weaponId), ['Ballistic', 'Antigun', 'Doublegun', 'Laser', 'Orb', 'Ghost']);
+    for (const box of boxes) {
+        assert.equal(hud.getPrimaryWeaponAt(box.x + 1, box.y + 1, [player])?.weaponId, box.weaponId);
+    }
+    assert.equal(hud.getPrimaryWeaponAt(boxes.at(-1).x + boxes.at(-1).width + 25, 981, [player]), null);
+});
+
+test('Select Weapon is anchored above the capsule bar and retains its three-flash, ten-second cycle', () => {
+    const hud = new HUD();
+    const visibleAt = now => {
+        const ctx = context();
+        hud.drawShopWeaponInstruction(ctx, true, 960, 980, now);
+        return ctx.texts;
+    };
+    assert.deepEqual(visibleAt(100).map(text => [text.value, text.y]), [['Select Weapon', 938]]);
+    assert.equal(visibleAt(600).length, 0);
+    assert.equal(visibleAt(1100).length, 1);
+    assert.equal(visibleAt(1600).length, 0);
+    assert.equal(visibleAt(2100).length, 1);
+    assert.equal(visibleAt(2600).length, 0);
+    assert.equal(visibleAt(3100).length, 1);
+    assert.equal(visibleAt(12900).length, 1);
+    hud.drawShopWeaponInstruction(context(), false, 960, 980, 13000);
+    assert.equal(hud.shopInstructionStartedAt, null);
+    assert.equal(visibleAt(20000).length, 1);
 });

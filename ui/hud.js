@@ -1,6 +1,7 @@
 export class HUD {
     constructor() {
         this.maxSpeed = 800; // Updated max speed reference for meter
+        this.shopInstructionStartedAt = null;
     }
 
     draw(ctx, players, asteroids, camera, isSplitScreen = false, swapUI = false, minimapContext = null) {
@@ -29,12 +30,14 @@ export class HUD {
             this.drawSpeedMeter(ctx, players[0], 650, 980, 3);
             this.drawSpeedMeter(ctx, players[1], 1270, 980, 3);
         } else {
-            // Solo: One meter, centered, laid out in a single row of 5
-            this.drawPowerUpMeter(ctx, players[0], 1920 / 2, 980, 5);
-            this.drawXPBar(ctx, players[0], 1920 / 2, 980, 5);
+            // Solo: the six primary weapons share one bottom-row selection surface.
+            this.drawPowerUpMeter(ctx, players[0], 1920 / 2, 980, 6);
+            this.drawXPBar(ctx, players[0], 1920 / 2, 980, 6);
             this.drawLevelUpChoices(ctx, players[0], 1920 / 2, 74);
-            this.drawSpeedMeter(ctx, players[0], 1920 / 2, 980, 5);
+            this.drawSpeedMeter(ctx, players[0], 1920 / 2, 980, 6);
         }
+
+        this.drawShopWeaponInstruction(ctx, Boolean(minimapContext?.shopMenuOpen), 1920 / 2, 980);
     }
 
     drawShopPrompts(ctx, currentArea, shopEligible, shopMenuOpen) {
@@ -159,6 +162,38 @@ export class HUD {
         return x >= boxX && x <= boxX + slotWidth && y >= 980 && y <= 980 + slotHeight
             ? { player, action: 'consumeCapsules' }
             : null;
+    }
+
+    getPrimaryWeaponBoxes(centerX = 1920 / 2, startY = 980, maxCols = 6) {
+        const names = ['Ballistic', 'Antigun', 'Doublegun', 'Laser', 'Orb', 'Ghost'];
+        const slotWidth = 90;
+        const slotHeight = 35;
+        const gap = 8;
+        const rows = Math.ceil(names.length / maxCols);
+        return names.map((weaponId, index) => {
+            const row = Math.floor(index / maxCols);
+            const itemsInRow = row === rows - 1 ? names.length - row * maxCols : maxCols;
+            const rowWidth = itemsInRow * slotWidth + (itemsInRow - 1) * gap;
+            return {
+                weaponId,
+                x: centerX - rowWidth / 2 + (index % maxCols) * (slotWidth + gap),
+                y: startY + row * (slotHeight + gap),
+                width: slotWidth,
+                height: slotHeight
+            };
+        });
+    }
+
+    getPrimaryWeaponAt(x, y, players, isSplitScreen = false) {
+        const player = players?.find(candidate => candidate.id === 1 && !candidate.isNPC);
+        if (!player || player.isDead || player.isEventHorizon) return null;
+        const centerX = isSplitScreen ? 650 : 1920 / 2;
+        const maxCols = isSplitScreen ? 3 : 6;
+        const box = this.getPrimaryWeaponBoxes(centerX, 980, maxCols).find(candidate =>
+            x >= candidate.x && x <= candidate.x + candidate.width
+            && y >= candidate.y && y <= candidate.y + candidate.height
+        );
+        return box ? { player, weaponId: box.weaponId } : null;
     }
 
     drawScoreboard(ctx, players, swapUI = false, gameMode = '') {
@@ -342,44 +377,16 @@ export class HUD {
     drawPowerUpMeter(ctx, player, centerX, startY, maxCols = 5) {
         if (!player || player.isEventHorizon) return; // Hide power-up meter for Event Horizon
 
-        const slots = [
-            { name: 'Antigun', type: 'GUN' },
-            { name: 'Doublegun', type: 'GUN' },
-            { name: 'Laser', type: player.isMartian ? 'UPGRADE' : 'GUN' },
-            { name: 'Orb', type: 'WEAPON' },
-            { name: 'Missile', type: 'ADD-ON' }
-        ];
-
-        const slotWidth = 90;
-        const slotHeight = 35;
-        const gap = 8;
-        
-        // Calculate layout to center either a single row of 5 or two rows (3+2)
-        const totalItems = slots.length;
-        const rows = Math.ceil(totalItems / maxCols);
-        
-        slots.forEach((slot, i) => {
-            const row = Math.floor(i / maxCols);
-            const itemsInThisRow = (row === rows - 1) ? (totalItems - row * maxCols) : maxCols;
-            
-            const rowWidth = itemsInThisRow * slotWidth + (itemsInThisRow - 1) * gap;
-            const startX = centerX - rowWidth / 2;
-            
-            const col = i % maxCols;
-            const x = startX + col * (slotWidth + gap);
-            const y = startY + row * (slotHeight + gap);
+        const boxes = this.getPrimaryWeaponBoxes(centerX, startY, maxCols);
+        boxes.forEach(box => {
+            const { weaponId: name, x, y, width: slotWidth, height: slotHeight } = box;
 
             const primaryAmmo = player.getPrimaryAmmoState?.();
-            const missileAmmo = player.getMissileAmmoState?.();
-            const ammoState = i === 4 && player.getWeaponPurchaseTier?.('Missile') > 0
-                ? missileAmmo
-                : slot.name === player.equippedPrimaryGun && primaryAmmo
-                    ? primaryAmmo
-                    : null;
+            const ammoState = name === player.equippedPrimaryGun ? primaryAmmo : null;
             if (ammoState) this.drawAmmoMeter(ctx, ammoState, x + slotWidth / 2, y - 12, slotWidth - 14);
 
-            const isCurrent = player.equippedPrimaryGun === slot.name;
-            const isSelectable = player.ownsWeapon?.(slot.name) || false;
+            const isCurrent = player.equippedPrimaryGun === name;
+            const isSelectable = name === 'Ballistic' || player.ownsWeapon?.(name) || false;
 
             // Box
             ctx.strokeStyle = isSelectable ? (isCurrent ? player.color : '#333') : '#555';
@@ -402,17 +409,23 @@ export class HUD {
             ctx.font = '9px Orbitron';
             ctx.fillStyle = !isSelectable ? '#777' : (isCurrent ? '#fff' : '#666');
             ctx.textAlign = 'center';
-            ctx.fillText(slot.name, x + slotWidth / 2, y + 22);
-            
-            ctx.font = '7px Orbitron';
-            ctx.fillStyle = !isSelectable ? '#555' : (isCurrent ? player.color : '#444');
-            ctx.fillText(slot.type, x + slotWidth / 2, y + 10);
+            ctx.fillText(name, x + slotWidth / 2, y + 22);
         });
 
-        // Ballistic has no legacy capsule slot, so its real Player-owned clip is
-        // rendered once above the row when it is the equipped primary.
-        if (player.equippedPrimaryGun === 'Ballistic' || player.equippedPrimaryGun === 'Ghost') {
-            this.drawAmmoMeter(ctx, player.getPrimaryAmmoState(), centerX, startY - 12, slotWidth - 14);
+        // Missile remains an independent add-on and is never part of primary selection.
+        if (player.getWeaponPurchaseTier?.('Missile') > 0) {
+            const lastBox = boxes.at(-1);
+            const missileX = lastBox.x + lastBox.width + 24;
+            this.drawAmmoMeter(ctx, player.getMissileAmmoState?.(), missileX + 45, startY - 12, 76);
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 1;
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.strokeRect(missileX, startY, 90, 35);
+            ctx.fillRect(missileX, startY, 90, 35);
+            ctx.font = '9px Orbitron';
+            ctx.fillStyle = '#aaa';
+            ctx.textAlign = 'center';
+            ctx.fillText('Missile', missileX + 45, startY + 22);
         }
 
         // Static capsule-selection helper appears only while a capsule bonus is available.
@@ -426,6 +439,25 @@ export class HUD {
             ctx.textAlign = 'center';
             ctx.fillText(msg, centerX, startY - 28);
         }
+    }
+
+    drawShopWeaponInstruction(ctx, shopMenuOpen, centerX, capsuleBarY, now = performance.now()) {
+        if (!shopMenuOpen) {
+            this.shopInstructionStartedAt = null;
+            return;
+        }
+        if (this.shopInstructionStartedAt == null) this.shopInstructionStartedAt = now;
+        const elapsed = (now - this.shopInstructionStartedAt) % 13000;
+        const visible = elapsed >= 3000 || Math.floor(elapsed / 500) % 2 === 0;
+        if (!visible) return;
+        ctx.save();
+        ctx.font = 'bold 24px Orbitron';
+        ctx.fillStyle = '#00ffff';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 8;
+        ctx.fillText('Select Weapon', centerX, capsuleBarY - 42);
+        ctx.restore();
     }
 
     // Geometry only: ammunition truth and timers remain Player-owned.
@@ -467,7 +499,7 @@ export class HUD {
 
         const slotHeight = 35;
         const gap = 8;
-        const slotCount = 5; // Matches the number of power-up capsule slots
+        const slotCount = 6; // Matches the number of primary-weapon capsule slots
         const rows = Math.ceil(slotCount / maxCols);
         const gridHeight = rows * slotHeight + (rows - 1) * gap;
 
