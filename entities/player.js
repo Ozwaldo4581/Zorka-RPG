@@ -79,9 +79,9 @@ export class Player {
         this.isNPC = false;
         this.isExperimentalFleeingNPC = false;
         this.isExperimentalSpawnSpecter = false;
-        this.isWisp = false;
-        this.wispLifeSpan = 0;
-        this.wispAge = 0;
+        this.isSpecter = false;
+        this.specterLifeSpan = 0;
+        this.specterAge = 0;
         this.experimentalSpecterRecovering = false;
         this.experimentalSpecterRecoveryTarget = null;
         this.experimentalSpecterWanderTimer = 0;
@@ -302,26 +302,26 @@ export class Player {
         this.phaseShifterTimer = 0;
     }
 
-    configureWispLifetime(random = Math.random) {
-        if (this.isWisp && this.wispLifeSpan > 0) return this.wispLifeSpan;
-        this.isWisp = true;
-        this.wispLifeSpan = 45 + random() * 30;
-        this.wispAge = 0;
-        return this.wispLifeSpan;
+    configureSpecterLifetime(random = Math.random) {
+        if (this.isSpecter && this.specterLifeSpan > 0) return this.specterLifeSpan;
+        this.isSpecter = true;
+        this.specterLifeSpan = 45 + random() * 30;
+        this.specterAge = 0;
+        return this.specterLifeSpan;
     }
 
-    advanceWispLifetime(dt) {
-        if (!this.isWisp || this.wispLifeSpan <= 0) return false;
-        this.wispAge = Math.min(this.wispLifeSpan, this.wispAge + Math.max(0, Number(dt) || 0));
-        return this.wispAge >= this.wispLifeSpan;
+    advanceSpecterLifetime(dt) {
+        if (!this.isSpecter || this.specterLifeSpan <= 0) return false;
+        this.specterAge = Math.min(this.specterLifeSpan, this.specterAge + Math.max(0, Number(dt) || 0));
+        return this.specterAge >= this.specterLifeSpan;
     }
 
-    getWispRemainingLifetime() {
-        return Math.max(0, this.wispLifeSpan - this.wispAge);
+    getSpecterRemainingLifetime() {
+        return Math.max(0, this.specterLifeSpan - this.specterAge);
     }
 
-    isWispVisible() {
-        return !this.isWisp || isVisibleForLifetimeWarning(this.wispAge, this.getWispRemainingLifetime());
+    isSpecterVisible() {
+        return !this.isSpecter || isVisibleForLifetimeWarning(this.specterAge, this.getSpecterRemainingLifetime());
     }
 
     applyShopUpgrade(slot) {
@@ -412,7 +412,7 @@ export class Player {
         while (this.totalXP >= this.getLevelThreshold(this.level + 1)) {
             this.level++;
             this.increaseMaxHP();
-            if (!this.isNPC) this.applyShieldUpgrade();
+            this.applyShieldUpgrade();
             levelsGained++;
         }
         return levelsGained;
@@ -667,7 +667,7 @@ export class Player {
     }
 
     resetLevelProgress() {
-        const automaticShieldCapacity = this.isNPC ? 0 : this.level;
+        const automaticShieldCapacity = this.level;
         this.totalXP = 0;
         this.level = 0;
         this.pendingLevelUps = 0;
@@ -676,9 +676,9 @@ export class Player {
         this.maxHP = BASE_PLAYER_HP + (this.isNPC ? 0 : HUMAN_STARTING_HP_BONUS);
         this.restoreHP();
 
-        this.maxShieldCharges = this.isExperimentalFleeingNPC ? 0 : Math.max(this.baselineMaxShieldCharges,
+        this.maxShieldCharges = this.isSpecter ? 0 : Math.max(this.baselineMaxShieldCharges,
             this.maxShieldCharges - automaticShieldCapacity);
-        if (this.isExperimentalFleeingNPC) this.baselineMaxShieldCharges = 0;
+        if (this.isSpecter) this.baselineMaxShieldCharges = 0;
         this.shieldRechargeUpgradeCount = 0;
         this.updateShieldRechargeDelay();
         this.shieldCharges = Math.min(this.shieldCharges, this.maxShieldCharges);
@@ -1163,7 +1163,7 @@ export class Player {
     }
 
     configureShields(maxShieldCharges, rechargeDelay) {
-        if (this.isExperimentalFleeingNPC) {
+        if (this.isSpecter) {
             this.baselineMaxShieldCharges = 0;
             this.maxShieldCharges = 0;
             this.shieldCharges = 0;
@@ -1172,7 +1172,7 @@ export class Player {
             return;
         }
         this.baselineMaxShieldCharges = Math.max(0, maxShieldCharges || 0);
-        this.maxShieldCharges = this.baselineMaxShieldCharges + (this.isNPC ? 0 : this.level);
+        this.maxShieldCharges = this.baselineMaxShieldCharges + this.level;
         this.baseShieldRechargeDelay = Math.max(0, rechargeDelay || 0);
         this.updateShieldRechargeDelay();
         this.shieldCharges = this.maxShieldCharges;
@@ -1195,7 +1195,7 @@ export class Player {
     }
 
     increaseMaxShields(amount = 1) {
-        if (this.isExperimentalFleeingNPC) return 0;
+        if (this.isSpecter) return 0;
         const increase = Math.max(0, Math.floor(Number(amount) || 0));
         this.maxShieldCharges += increase;
         this.shieldCharges = Math.min(this.shieldCharges, this.maxShieldCharges);
@@ -1205,7 +1205,7 @@ export class Player {
     // Capsule Shield remains a match-local capacity bonus; selectable level
     // progression uses Shield Recharge instead.
     applyShieldUpgrade() {
-        if (this.isExperimentalFleeingNPC) return false;
+        if (this.isSpecter) return false;
         this.maxShieldCharges += 1;
         this.shieldCharges = Math.min(this.maxShieldCharges, this.shieldCharges + 1);
         this.hasForcefield = this.shieldCharges > 0;
@@ -1214,7 +1214,7 @@ export class Player {
     }
 
     restoreShieldCharges(shieldCharges) {
-        if (this.isExperimentalFleeingNPC) {
+        if (this.isSpecter) {
             this.baselineMaxShieldCharges = 0;
             this.maxShieldCharges = 0;
             this.shieldCharges = 0;
@@ -2345,7 +2345,7 @@ export class Player {
     }
 
     draw(ctx, assets, camera) {
-        if (!this.isWispVisible()) return;
+        if (!this.isSpecterVisible()) return;
         // Draw Ghosts
         this.ghosts.forEach(ghost => {
             ctx.save();
