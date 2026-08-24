@@ -79,9 +79,10 @@ test('NPCs immediately resolve every queued choice from selectable upgrades', ()
 });
 
 test('new NPCs initialize at a target level without queued player choices', () => {
-    for (const targetLevel of [3, 8, 25, 500]) {
+    for (const targetLevel of [1, 5, 8, 25, 500]) {
         const npc = new Player(0, 0);
         npc.isNPC = true;
+        npc.configureShields(2, 6);
         assert.equal(npc.initializeNPCLevel(targetLevel, () => 0), true);
         assert.equal(npc.level, targetLevel);
         assert.equal(npc.totalXP, npc.getLevelThreshold(targetLevel));
@@ -91,7 +92,22 @@ test('new NPCs initialize at a target level without queued player choices', () =
         assert.equal(npc.shieldRechargeUpgradeCount, 0);
         assert.equal(npc.score, 0);
         assert.equal(npc.prestigeLevel, 0);
+        assert.equal(npc.maxHP, 5 + targetLevel);
+        assert.equal(npc.maxShieldCharges, 2 + targetLevel);
+        assert.equal(npc.currentHP, npc.maxHP);
+        assert.equal(npc.shieldCharges, npc.maxShieldCharges);
     }
+
+    const baseline = Object.assign(new Player(0, 0), { isNPC: true });
+    baseline.configureShields(2, 6);
+    baseline.resetLevelProgress();
+    assert.deepEqual([baseline.maxHP, baseline.maxShieldCharges], [5, 2]);
+
+    const specter = Object.assign(new Player(0, 0), { isNPC: true });
+    specter.configureSpecterLifetime(() => 0);
+    specter.configureShields(2, 6);
+    assert.equal(specter.initializeNPCLevel(5, () => 0), true);
+    assert.equal(specter.maxShieldCharges, 0);
 });
 
 test('NPC capsule bonuses derive from authoritative level minus three', () => {

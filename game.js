@@ -2704,7 +2704,7 @@ export class Game {
             npc.roomId = room.id;
             npc.isOrdinaryExperimentalNPC = true;
             npc.isExperimentalFleeingNPC = isSpecter;
-            if (isSpecter) npc.configureWispLifetime();
+            if (isSpecter) npc.configureSpecterLifetime();
             npc.noRespawn = true;
             if (typeof this.configurePlayerShields === 'function') this.configurePlayerShields(npc);
             if (this.botAggressionLevel > 0) {
@@ -2724,7 +2724,7 @@ export class Game {
         return spawned;
     }
 
-    spawnExperimentalPlayerSpecterRing(human) {
+    spawnExperimentalPlayerSpecter(human) {
         if (this.gameState !== GAME_MODE.EXPERIMENTAL || !human || human.isNPC || human.isDead) return [];
         const room = Game.prototype.getExperimentalRoom.call(this, human.roomId);
         if (!room || room.roomNumber <= 0) return [];
@@ -2735,11 +2735,10 @@ export class Game {
             this.players.splice(this.players.indexOf(specter), 1);
         }
 
-        const count = Math.max(0, Math.floor(Number(human.level) || 0));
         const spawned = [];
         let nextNpcId = Math.max(1, ...this.players.map(player => player.id || 0)) + 1;
-        for (let index = 0; index < count; index++) {
-            const angle = index * Math.PI * 2 / count;
+        for (let index = 0; index < 1; index++) {
+            const angle = Math.random() * Math.PI * 2;
             const npc = new Player(
                 human.x + Math.cos(angle) * EXPERIMENTAL_SPECTER_SPAWN_RADIUS,
                 human.y + Math.sin(angle) * EXPERIMENTAL_SPECTER_SPAWN_RADIUS,
@@ -2751,7 +2750,7 @@ export class Game {
             npc.isOrdinaryExperimentalNPC = true;
             npc.isExperimentalFleeingNPC = true;
             npc.isExperimentalSpawnSpecter = true;
-            npc.configureWispLifetime();
+            npc.configureSpecterLifetime();
             npc.noRespawn = true;
             if (typeof this.configurePlayerShields === 'function') this.configurePlayerShields(npc);
             if (this.botAggressionLevel > 0) {
@@ -2779,7 +2778,7 @@ export class Game {
 
     isLivingOrdinaryExperimentalRoomEnemy(player, roomId = player?.roomId) {
         return this.gameState === GAME_MODE.EXPERIMENTAL && player instanceof Player && player.isNPC
-            && player.isOrdinaryExperimentalNPC === true && !player.isWisp && player.roomId === roomId
+            && player.isOrdinaryExperimentalNPC === true && !player.isSpecter && player.roomId === roomId
             && !player.isDead && !player.isEliminated;
     }
 
@@ -2796,7 +2795,9 @@ export class Game {
         Game.prototype.unindexExperimentalEntity.call(this, 'players', deadNPC);
         const deadIndex = this.players.indexOf(deadNPC);
         if (deadIndex !== -1) this.players.splice(deadIndex, 1);
-        Game.prototype.reconcileExperimentalOrdinaryNPCPopulation.call(this, roomId);
+        if (!deadNPC.isSpecter) {
+            Game.prototype.reconcileExperimentalOrdinaryNPCPopulation.call(this, roomId);
+        }
         return true;
     }
 
@@ -2818,14 +2819,14 @@ export class Game {
         return missing;
     }
 
-    removeExpiredWisps() {
+    removeExpiredSpecters() {
         let removed = 0;
-        for (const wisp of [...this.players]) {
-            if (!wisp?.isWisp || wisp.wispAge < wisp.wispLifeSpan) continue;
-            Game.prototype.unindexExperimentalEntity.call(this, 'players', wisp);
-            const index = this.players.indexOf(wisp);
+        for (const specter of [...this.players]) {
+            if (!specter?.isSpecter || specter.specterAge < specter.specterLifeSpan) continue;
+            Game.prototype.unindexExperimentalEntity.call(this, 'players', specter);
+            const index = this.players.indexOf(specter);
             if (index !== -1) this.players.splice(index, 1);
-            this.clearAimLocksForTarget?.(wisp);
+            this.clearAimLocksForTarget?.(specter);
             removed++;
         }
         return removed;
@@ -4006,7 +4007,7 @@ export class Game {
             : this.hazards;
 
         for (let player of this.players) {
-            if (player.advanceWispLifetime?.(dt)) continue;
+            if (player.advanceSpecterLifetime?.(dt)) continue;
             if (player.isEliminated) continue; // Skip eliminated players completely
             if (player.isNPC && worldRules.usesRooms
                 && !activeExperimentalAreaIds.has(player.roomId)) {
@@ -4166,7 +4167,7 @@ export class Game {
             }
         }
 
-        Game.prototype.removeExpiredWisps.call(this);
+        Game.prototype.removeExpiredSpecters.call(this);
 
         for (const prestigePlayer of prestigeTriggers) {
             this.applyPrestigeShieldPulse(prestigePlayer);
@@ -4702,7 +4703,7 @@ export class Game {
                 player.color = chooseDifferentPlayerColor(player.color);
                 Game.prototype.reconcileExperimentalNPCColorConflicts.call(this, player);
                 player.startExperimentalRespawnPhase(spawn.x, spawn.y);
-                Game.prototype.spawnExperimentalPlayerSpecterRing.call(this, player);
+                Game.prototype.spawnExperimentalPlayerSpecter.call(this, player);
                 Game.prototype.showExperimentalSectorMessage.call(this, 1);
             }
             return;
@@ -5021,13 +5022,23 @@ export class Game {
 
         // Award the confirmed kill before Hardcore clears the victim's progression.
         if (killer && killer !== player && typeof killer.addCapsule === 'function' && !player.noKillReward) {
-            if (player.isNPC) this.awardXP(killer, Game.prototype.getNPCXPReward.call(this, player), player);
+            if (player.isNPC && !player.isSpecter) {
+                this.awardXP(killer, Game.prototype.getNPCXPReward.call(this, player), player);
+            }
             if (this.gameState === GAME_MODE.EXPERIMENTAL && player.isNPC) {
-                let debrisCount = 10;
-                for (let level = 0; level < Math.max(0, Math.floor(player.level || 0)); level++) {
-                    if (Math.random() < 0.5) debrisCount++;
+                let debrisCount;
+                if (player.isSpecter) {
+                    const human = this.players.find(candidate => !candidate.isNPC);
+                    debrisCount = Math.floor(Math.max(0, Number(human?.scrap) || 0) * 0.1);
+                } else {
+                    debrisCount = 10;
+                    for (let level = 0; level < Math.max(0, Math.floor(player.level || 0)); level++) {
+                        if (Math.random() < 0.5) debrisCount++;
+                    }
                 }
-                Game.prototype.spawnDebrisBurst.call(this, player.x, player.y, player.roomId, debrisCount);
+                if (debrisCount > 0) {
+                    Game.prototype.spawnDebrisBurst.call(this, player.x, player.y, player.roomId, debrisCount);
+                }
             }
             if (player.isNPC) {
                 const capsuleCount = getNPCCapsuleRewardCount(player.level);

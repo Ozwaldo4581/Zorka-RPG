@@ -237,18 +237,18 @@ test('Buy A Round atomically advances encounter level and keeps its flat price',
     assert.equal(Game.prototype.getSpaceBarRoundOffer.call(game, player).price, SPACE_BAR_ROUND_PRICE);
 });
 
-test('encounter level derives ordinary NPC target and re-levels survivors while excluding Wisps', () => {
+test('encounter level derives ordinary NPC target and re-levels survivors while excluding Specters', () => {
     const roomId = room.id;
     const ordinary = Object.assign(new Player(0, 0, 2), {
         isNPC: true, isOrdinaryExperimentalNPC: true, roomId
     });
     ordinary.initializeNPCLevel(1, () => 0);
-    const wisp = Object.assign(new Player(0, 0, 3), {
-        isNPC: true, isOrdinaryExperimentalNPC: true, isWisp: true, roomId
+    const specter = Object.assign(new Player(0, 0, 3), {
+        isNPC: true, isOrdinaryExperimentalNPC: true, isSpecter: true, roomId
     });
     const game = {
         gameState: GAME_MODE.EXPERIMENTAL,
-        players: [ordinary, wisp],
+        players: [ordinary, specter],
         experimentalRooms: [room],
         experimentalEncounterStates: new Map([[roomId, { npcLevel: 2 }]]),
         spawnOrdinaryExperimentalRoomNPCs(_roomId, _players, count) { this.spawned = count; }
@@ -256,7 +256,7 @@ test('encounter level derives ordinary NPC target and re-levels survivors while 
     assert.equal(Game.prototype.reconcileExperimentalOrdinaryNPCPopulation.call(game, roomId), 1);
     assert.equal(ordinary.level, 2);
     assert.equal(game.spawned, 1);
-    assert.equal(wisp.level, 0);
+    assert.equal(specter.level, 0);
 });
 
 test('player-death world rebuild preserves purchased encounter progression but a fresh run starts at level one', () => {
@@ -268,10 +268,10 @@ test('player-death world rebuild preserves purchased encounter progression but a
             isNPC: true, isOrdinaryExperimentalNPC: true, roomId
         });
         baselineNPC.initializeNPCLevel(1, () => 0);
-        const wisp = Object.assign(new Player(0, 0, 3), {
-            isNPC: true, isOrdinaryExperimentalNPC: true, isWisp: true, roomId
+        const specter = Object.assign(new Player(0, 0, 3), {
+            isNPC: true, isOrdinaryExperimentalNPC: true, isSpecter: true, roomId
         });
-        this.players = [human, baselineNPC, wisp];
+        this.players = [human, baselineNPC, specter];
         this.experimentalRooms = [room];
         this.experimentalEncounterStates = new Map([[roomId, { npcLevel: 1 }]]);
     };
@@ -294,11 +294,11 @@ test('player-death world rebuild preserves purchased encounter progression but a
             }
         };
         assert.equal(Game.prototype.resetExperimentalWorldLoop.call(game, human), true);
-        const ordinary = game.players.filter(candidate => candidate.isNPC && !candidate.isWisp);
+        const ordinary = game.players.filter(candidate => candidate.isNPC && !candidate.isSpecter);
         assert.equal(game.experimentalEncounterStates.get(roomId).npcLevel, purchasedLevel);
         assert.equal(ordinary.length, purchasedLevel);
         assert.ok(ordinary.every(candidate => candidate.level === purchasedLevel));
-        assert.equal(game.players.filter(candidate => candidate.isWisp).length, 1);
+        assert.equal(game.players.filter(candidate => candidate.isSpecter).length, 1);
     }
     Game.prototype.initializeExperimentalWorldState = initializeWorldState;
 
