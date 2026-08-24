@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { Player } from '../entities/player.js';
-import { Game, GAME_MODE, SECTOR_0_WEAPON_CATALOG, SECTOR_0_UTILITY_CATALOG, SPACE_BAR_ROUND_PRICE, getNPCCapsuleRewardCount } from '../game.js';
+import { Game, GAME_MODE, SECTOR_0_WEAPON_CATALOG, SECTOR_0_UTILITY_CATALOG, SPACE_BAR_ROUND_PRICE,
+    SHIP_MODIFICATION_PRICE, SHIP_MODIFICATION_IDS, SHIP_MODIFICATION_CAPS, getNPCCapsuleRewardCount } from '../game.js';
 import { createExperimentalAreas, isSector0ShopArea, EXPERIMENTAL_AREA_ROLE } from '../world/experimental_rooms.js';
 
 const areas = createExperimentalAreas(9600, 5400);
@@ -22,12 +23,87 @@ test('Shop DOM keeps purchase rows and Back but has no duplicate primary selecto
         assert.match(html, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     }
     for (const text of ['Increase Shield', 'Increase Shield Recharge Rate', 'Increase Hull Protection',
-        'Increase Hull Recovery Rate', 'Increase Fire Rate', 'Increase Reload Speed', 'Increase Acceleration']) {
+        'Increase Hull Recovery Rate', 'Increase Projectile', 'Increase Fire Rate', 'Increase Reload Speed',
+        'Increase Acceleration', 'Increase Max Speed']) {
         assert.match(html, new RegExp(text));
     }
+    const modificationMarkup = html.match(/<div id="ship-modification-menu"[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/)?.[0] || '';
+    assert.deepEqual([...modificationMarkup.matchAll(/data-ship-modification="([^"]+)"/g)].map(match => match[1]),
+        SHIP_MODIFICATION_IDS);
+    assert.doesNotMatch(modificationMarkup, /shop-upgrade" disabled/);
+    assert.ok(modificationMarkup.indexOf('data-ship-modification="projectile"')
+        < modificationMarkup.indexOf('data-ship-modification="fireRate"'));
     assert.equal((html.match(/data-stub-shop-back/g) || []).length, 3);
     assert.equal((html.match(/id="btn-buy-round"/g) || []).length, 1);
     assert.match(html, /1,000<\/span><button id="btn-buy-round"[^>]*>Buy A Round/);
+});
+
+test('Modify Ship purchases use one flat price and enforce only the central caps', () => {
+    assert.equal(SHIP_MODIFICATION_PRICE, 500);
+    assert.deepEqual(SHIP_MODIFICATION_CAPS, {
+        shield: null, shieldRecharge: 10, hullProtection: null, hullRecovery: 10, projectile: 10,
+        fireRate: null, reloadSpeed: 10, acceleration: 10, maxSpeed: 5
+    });
+    const modificationArea = areas.find(area => area.role === EXPERIMENTAL_AREA_ROLE.SHIP_MODIFICATION);
+    for (const upgradeId of SHIP_MODIFICATION_IDS) {
+        const player = new Player(0, 0, 1);
+        player.roomId = modificationArea.id;
+        player.scrap = 10000;
+        const game = { ...shopGame(player), activeSector0Shop: 'SHIP_MODIFICATION' };
+        const cap = SHIP_MODIFICATION_CAPS[upgradeId];
+        const purchases = cap === null ? 11 : cap;
+        for (let level = 1; level <= purchases; level++) {
+            const before = player.scrap;
+            assert.equal(Game.prototype.handleShipModificationIntent.call(game, upgradeId), true, `${upgradeId} ${level}`);
+            assert.equal(before - player.scrap, 500);
+        }
+        if (cap === null) {
+            assert.equal(player.shipUpgrades[upgradeId], 11);
+        } else {
+            const before = player.scrap;
+            assert.equal(Game.prototype.handleShipModificationIntent.call(game, upgradeId), false);
+            assert.deepEqual([player.scrap, player.shipUpgrades[upgradeId]], [before, cap]);
+        }
+    }
+});
+
+test('Modify Ship Player helpers reach requested scaling and persist their source counts', () => {
+    const player = new Player(0, 0, 1);
+    const baseShieldDelay = player.getShieldRechargeDelay();
+    const baseHPDelay = player.getEffectiveHPRechargeDelay();
+    const baseReload = player.getEffectivePrimaryReloadDuration();
+    const baseThrust = player.getEffectiveThrust();
+    const baseSpeed = player.getNormalShipSpeedCap();
+    const baseCapacity = player.getStandardProjectileCapacity();
+    Object.assign(player.shipUpgrades, {
+        shield: 12, shieldRecharge: 10, hullProtection: 12, hullRecovery: 10, projectile: 10,
+        fireRate: 20, reloadSpeed: 10, acceleration: 10, maxSpeed: 5
+    });
+    assert.equal(player.getShieldRechargeDelay(), baseShieldDelay / 3);
+    assert.equal(player.getEffectiveHPRechargeDelay(), baseHPDelay / 3);
+    assert.equal(player.getEffectivePrimaryReloadDuration(), baseReload / 3);
+    assert.equal(player.getEffectiveThrust(), baseThrust * 3);
+    assert.equal(player.getNormalShipSpeedCap(), baseSpeed * 2);
+    assert.equal(player.getStandardProjectileCapacity(), baseCapacity + 10);
+
+    const intervals = [0, 1, 2, 10, 20].map(level => {
+        player.shipUpgrades.fireRate = level;
+        return player.getEffectivePrimaryShotInterval(1);
+    });
+    assert.ok(intervals.every((interval, index) => interval > 0 && (index === 0 || interval < intervals[index - 1])));
+    const rateGains = [1, 2, 3, 4].map(level => {
+        player.shipUpgrades.fireRate = level;
+        const currentRate = 1 / player.getEffectivePrimaryShotInterval(1);
+        player.shipUpgrades.fireRate = level - 1;
+        return currentRate - 1 / player.getEffectivePrimaryShotInterval(1);
+    });
+    assert.ok(rateGains.every((gain, index) => index === 0 || gain < rateGains[index - 1]));
+
+    const restored = new Player(0, 0, 2);
+    restored.applyPersistentProgression(player.getPersistentProgressionSnapshot());
+    assert.deepEqual(restored.shipUpgrades, player.shipUpgrades);
+    assert.equal(restored.maxHP, 10 + player.shipUpgrades.hullProtection);
+    assert.equal(restored.maxShieldCharges, player.shipUpgrades.shield);
 });
 
 test('Utility catalog prices are authoritative and purchases are atomic one-time unlocks', () => {
