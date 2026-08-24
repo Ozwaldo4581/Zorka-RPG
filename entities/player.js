@@ -338,7 +338,7 @@ export class Player {
         return applied;
     }
 
-    initializeNPCLevel(targetLevel, random = Math.random, capsuleBudget = null) {
+    initializeNPCLevel(targetLevel, random = Math.random) {
         if (!this.isNPC || this.level !== 0 || this.totalXP !== 0 || this.pendingLevelUps !== 0) return false;
         const normalizedLevel = Math.max(1, Math.floor(Number(targetLevel) || 1));
         this.maxHP = BASE_PLAYER_HP + (this.isNPC ? 0 : HUMAN_STARTING_HP_BONUS);
@@ -346,7 +346,7 @@ export class Player {
         this.addXP(this.getLevelThreshold(normalizedLevel));
         this.resolveNPCLevelUps(random);
         if (this.level !== normalizedLevel || this.pendingLevelUps !== 0) return false;
-        this.applyNPCCapsuleBudget(capsuleBudget === null ? this.level : capsuleBudget, random);
+        this.applyNPCCapsuleBudget(Math.max(0, this.level - 3), random);
         return true;
     }
 

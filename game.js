@@ -66,11 +66,6 @@ export function getNPCCapsuleRewardCount(npcLevel) {
     return Math.max(0, Math.floor(Number(npcLevel) || 0) - 3);
 }
 
-export function getExperimentalNPCCapsuleBudget(npcLevel, roomNumber) {
-    return Math.max(1, Math.floor(Number(npcLevel) || 1))
-        + Math.max(0, Math.floor(Number(roomNumber) || 0));
-}
-
 export const PROJECTILE_COMBAT_CATEGORY = Object.freeze({
     MISSILE: 'MISSILE',
     SKINNY_MISSILE: 'SKINNY_MISSILE',
@@ -1943,7 +1938,7 @@ export class Game {
             npc.rollAccuracy();
             if (typeof this.configurePlayerShields === 'function') this.configurePlayerShields(npc);
             const npcLevel = Game.prototype.getExperimentalEnemyLevel.call(this, SECTOR_9_BBG_ENCOUNTER.baseNpcLevel);
-            npc.initializeNPCLevel(npcLevel, Math.random, getExperimentalNPCCapsuleBudget(npcLevel, room.roomNumber));
+            npc.initializeNPCLevel(npcLevel, Math.random);
             this.players.push(npc);
             Game.prototype.indexExperimentalEntity.call(this, 'players', npc);
             state.memberIds.add(npc.id);
@@ -2445,7 +2440,7 @@ export class Game {
             const npcLevel = isSpecter
                 ? 1
                 : Game.prototype.getExperimentalEnemyLevel.call(this, encounter?.npcLevel ?? room.npcLevel);
-            npc.initializeNPCLevel(npcLevel, Math.random, getExperimentalNPCCapsuleBudget(npcLevel, room.roomNumber));
+            npc.initializeNPCLevel(npcLevel, Math.random);
             this.players.push(npc);
             Game.prototype.indexExperimentalEntity.call(this, 'players', npc);
             if (placedPlayers !== this.players) placedPlayers.push(npc);
@@ -2489,7 +2484,7 @@ export class Game {
                 npc.aggressionLevel = this.botAggressionLevel;
                 npc.rollAccuracy();
             } else npc.rollAggression();
-            npc.initializeNPCLevel(1, Math.random, getExperimentalNPCCapsuleBudget(1, room.roomNumber));
+            npc.initializeNPCLevel(1, Math.random);
             this.players.push(npc);
             Game.prototype.indexExperimentalEntity.call(this, 'players', npc);
             spawned.push(npc);
@@ -4382,7 +4377,7 @@ export class Game {
                 player.resetLevelProgress();
                 const npcLevel = Game.prototype.getExperimentalEnemyLevel.call(this, room.npcLevel);
                 player.configureShields(this.startingShieldCharges, getShieldRechargeDelay(this.shieldRechargeRate));
-                player.initializeNPCLevel(npcLevel, Math.random, getExperimentalNPCCapsuleBudget(npcLevel, room.roomNumber));
+                player.initializeNPCLevel(npcLevel, Math.random);
                 const humanColor = this.players.find(candidate => !candidate.isNPC)?.color;
                 player.color = chooseOrdinaryNPCColor(humanColor);
                 player.rollAggression();
