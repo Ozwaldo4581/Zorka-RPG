@@ -974,6 +974,41 @@ export class Game {
         document.getElementById('btn-experimental-start').addEventListener('click', () => {
             this.showExperimentalProfileSelection();
         });
+        document.getElementById('btn-experimental-profile-play').addEventListener('click', () => {
+            this.playSelectedExperimentalProfile();
+        });
+        document.getElementById('btn-experimental-profile-change').addEventListener('click', () => {
+            this.closeExperimentalProfileActions();
+        });
+        document.getElementById('btn-experimental-profile-delete').addEventListener('click', () => {
+            this.openExperimentalProfileDeleteConfirmation();
+        });
+        document.getElementById('btn-profile-delete-confirm').addEventListener('click', () => {
+            this.deleteSelectedExperimentalProfile();
+        });
+        document.getElementById('btn-profile-delete-cancel').addEventListener('click', () => {
+            this.closeExperimentalProfileDeleteConfirmation();
+        });
+        document.getElementById('btn-experimental-profile-cancel').addEventListener('click', () => {
+            this.hideExperimentalProfileNameEntry();
+        });
+        document.getElementById('btn-experimental-profile-create').addEventListener('click', () => {
+            this.createSelectedExperimentalProfile();
+        });
+        document.getElementById('experimental-profile-name').addEventListener('keydown', event => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            this.createSelectedExperimentalProfile();
+        });
+        document.getElementById('btn-experimental-profile-back').addEventListener('click', () => {
+            this.hideExperimentalProfileNameEntry();
+            document.getElementById('experimental-profile-menu').classList.add('hidden');
+            document.getElementById('experimental-profile-actions').classList.add('hidden');
+            document.getElementById('profile-delete-confirmation').classList.add('hidden');
+            document.getElementById('main-menu').classList.remove('hidden');
+            this.menuIndex = 0;
+            this.lastActiveMenuId = 'main-menu';
+        });
 
 
         document.getElementById('btn-arcade-play').addEventListener('click', () => {
