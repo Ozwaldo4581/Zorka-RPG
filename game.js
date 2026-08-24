@@ -281,6 +281,7 @@ export class Game {
         this.pauseMenuCooldown = 0;
         this.activeModal = null;
         this.isShopMenuOpen = false;
+        this.activeSector0Shop = null;
         this.focusBeforeModal = null;
         
         // Gamepad input is opt-in from the main Options screen.
@@ -865,9 +866,8 @@ export class Game {
                 return;
             }
             this.keys[e.code] = true;
-            if (e.code === 'Space' && !e.repeat && Game.prototype.isHumanInSector0Shop.call(this)) {
+            if (e.code === 'Space' && !e.repeat && Game.prototype.handleSector0Interaction.call(this)) {
                 this.keys[e.code] = false;
-                Game.prototype.openSector0Shop.call(this);
                 e.preventDefault();
                 return;
             }
@@ -1317,6 +1317,9 @@ export class Game {
         document.getElementById('btn-sector-0-shop-back')?.addEventListener('click', () => {
             Game.prototype.closeSector0Shop.call(this);
         });
+        document.querySelectorAll('[data-stub-shop-back]').forEach(button => button.addEventListener('click', () => {
+            Game.prototype.closeSector0Shop.call(this);
+        }));
         // Transformation Kills Logic
         const transValueEl = document.getElementById('trans-value');
         const transIncBtn = document.getElementById('trans-inc');
@@ -1373,21 +1376,44 @@ export class Game {
             && isSector0ShopArea(player.roomId, this.experimentalRooms || []);
     }
 
-    openSector0Shop() {
-        if (!Game.prototype.isHumanInSector0Shop.call(this) || this.isShopMenuOpen
+    getHumanSector0InteractionArea() {
+        const player = Game.prototype.getHumanPlayer.call(this);
+        if (this.gameState !== GAME_MODE.EXPERIMENTAL || !player || player.isDead || player.isEliminated) return null;
+        const area = (this.experimentalRooms || []).find(candidate => candidate.id === player.roomId);
+        return area?.roomNumber === 0 && area.interaction ? area : null;
+    }
+
+    handleSector0Interaction() {
+        const area = Game.prototype.getHumanSector0InteractionArea.call(this);
+        if (!area || this.isShopMenuOpen || this.isPauseMenuOpen || this.activeModal || this.optionsOpenedFromPause) return false;
+        if (area.interaction === 'SPACE_BAR_STUB') return true;
+        const menuId = {
+            WEAPONS_SHOP: 'sector-0-shop-menu',
+            UTILITY_SHOP: 'utility-shop-menu',
+            SHIP_MODIFICATION: 'ship-modification-menu'
+        }[area.interaction];
+        return menuId ? Game.prototype.openSector0Shop.call(this, area.interaction, menuId) : false;
+    }
+
+    openSector0Shop(shopType = 'WEAPONS_SHOP', menuId = 'sector-0-shop-menu') {
+        const area = Game.prototype.getHumanSector0InteractionArea.call(this);
+        if (area?.interaction !== shopType || this.isShopMenuOpen
             || this.isPauseMenuOpen || this.activeModal || this.optionsOpenedFromPause) return false;
         this.resetLockInputs?.();
         this.isShopMenuOpen = true;
-        const menu = document.getElementById('sector-0-shop-menu');
+        this.activeSector0Shop = shopType;
+        document.querySelectorAll?.('[data-sector-0-shop-menu]').forEach(candidate => candidate.classList.add('hidden'));
+        const menu = document.getElementById(menuId);
         menu?.classList.remove('hidden');
-        Game.prototype.refreshSector0ShopMenu.call(this);
+        if (shopType === 'WEAPONS_SHOP') Game.prototype.refreshSector0ShopMenu.call(this);
         this.setInitialMenuFocus?.(menu);
         return true;
     }
 
     closeSector0Shop() {
         this.isShopMenuOpen = false;
-        document.getElementById('sector-0-shop-menu')?.classList.add('hidden');
+        this.activeSector0Shop = null;
+        document.querySelectorAll?.('[data-sector-0-shop-menu]').forEach(menu => menu.classList.add('hidden'));
         return true;
     }
 
@@ -4883,8 +4909,8 @@ export class Game {
                 if (!second || second.isDestroyed) continue;
                 if (!Game.prototype.areExperimentalEntitiesCoLocated.call(this, first, second)) continue;
                 if (!checkCollision(first, second)) continue;
-                if (first.size === 'small') Game.prototype.destroySmallAsteroidEnvironmentally.call(this, first);
-                if (second.size === 'small') Game.prototype.destroySmallAsteroidEnvironmentally.call(this, second);
+                if (first.size === 'small' && second.size !== 'small') Game.prototype.destroySmallAsteroidEnvironmentally.call(this, first);
+                if (second.size === 'small' && first.size !== 'small') Game.prototype.destroySmallAsteroidEnvironmentally.call(this, second);
             }
         }
 
@@ -5281,8 +5307,9 @@ export class Game {
                     rooms: this.experimentalRooms,
                     hazards: this.hazards,
                     gameMode: this.gameState,
-                    shopEligible: Game.prototype.isHumanInSector0Shop.call(this),
+                    shopEligible: Boolean(Game.prototype.getHumanSector0InteractionArea.call(this)),
                     shopMenuOpen: this.isShopMenuOpen,
+                    weaponShopOpen: this.activeSector0Shop === 'WEAPONS_SHOP',
                     currentArea: this.experimentalRooms?.find(area => area.id === this.players[0]?.roomId) || null,
                     profileName: this.gameState === GAME_MODE.EXPERIMENTAL
                         && Number.isInteger(this.selectedExperimentalProfileSlot)

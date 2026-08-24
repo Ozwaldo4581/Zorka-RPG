@@ -82,7 +82,8 @@ export const EXPERIMENTAL_AREA_TYPE = Object.freeze({ ROOM: 'ROOM', HALLWAY: 'HA
 export const EXPERIMENTAL_AREA_ROLE = Object.freeze({
     WEAPONS_SHOP: 'WEAPONS_SHOP',
     UTILITY_SHOP: 'UTILITY_SHOP',
-    SHIP_MODIFICATION: 'SHIP_MODIFICATION'
+    SHIP_MODIFICATION: 'SHIP_MODIFICATION',
+    SPACE_BAR: 'SPACE_BAR'
 });
 export const SECTOR_0_SHOP_NAME = 'Sector 0 Shop';
 
@@ -415,17 +416,24 @@ export function createExperimentalAreas(roomWidth, roomHeight) {
         },
         {
             id: 'experimental-sector-0-utility-shop', role: EXPERIMENTAL_AREA_ROLE.UTILITY_SHOP,
-            name: 'Sector 0 Utility', displayText: 'Purchase Utility', interaction: null,
+            name: 'Sector 0 Utility', displayText: 'Purchase Utility', interaction: 'UTILITY_SHOP',
             bounds: boundsAt((roomBounds.left + roomBounds.right - EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH) / 2,
                 roomBounds.top - EXPERIMENTAL_SECTOR_0_DEAD_END_DEPTH,
                 EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH, EXPERIMENTAL_SECTOR_0_DEAD_END_DEPTH)
         },
         {
             id: 'experimental-sector-0-ship-modification', role: EXPERIMENTAL_AREA_ROLE.SHIP_MODIFICATION,
-            name: 'Sector 0 Ship Modification', displayText: 'Modify Ship', interaction: null,
+            name: 'Sector 0 Ship Modification', displayText: 'Modify Ship', interaction: 'SHIP_MODIFICATION',
             bounds: boundsAt(roomBounds.right,
                 (roomBounds.top + roomBounds.bottom - EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH) / 2,
                 EXPERIMENTAL_SECTOR_0_DEAD_END_DEPTH, EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH)
+        },
+        {
+            id: 'experimental-sector-0-space-bar', role: EXPERIMENTAL_AREA_ROLE.SPACE_BAR,
+            name: 'Sector 0 Space Bar', displayText: 'The Space Bar', interaction: 'SPACE_BAR_STUB',
+            bounds: boundsAt((roomBounds.left + roomBounds.right - EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH) / 2,
+                roomBounds.bottom,
+                EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH, EXPERIMENTAL_SECTOR_0_DEAD_END_DEPTH)
         }
     ];
     const roomShell = {

@@ -114,7 +114,7 @@ test('environmental contacts destroy only qualifying Small asteroids without rew
     }
 });
 
-test('Small asteroid contact pass covers NPC, every asteroid tier, and Satellite', () => {
+test('Small asteroid contact pass covers NPC, larger asteroid tiers, and Satellite but preserves Small pairs', () => {
     const run = ({ asteroids, players = [], hazards = [] }) => {
         const game = destructionGame();
         game.asteroids.push(...asteroids);
@@ -140,7 +140,7 @@ test('Small asteroid contact pass covers NPC, every asteroid tier, and Satellite
     const first = new Asteroid(10, 10, 'small');
     const second = new Asteroid(10, 10, 'small');
     run({ asteroids: [first, second] });
-    assert.deepEqual([first.isDestroyed, second.isDestroyed], [true, true]);
+    assert.deepEqual([first.isDestroyed, second.isDestroyed], [false, false]);
 
     const npcSmall = new Asteroid(10, 10, 'small');
     const npc = new Player(10, 10, 9); npc.isNPC = true; npc.spawnImmunityTimer = 0;

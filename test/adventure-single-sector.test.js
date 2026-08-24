@@ -29,19 +29,19 @@ function createTopologyGame() {
   return game;
 }
 
-test('Adventure topology connects Sector 1 to three terminal Sector 0 areas', () => {
+test('Adventure topology connects Sector 1 to four terminal Sector 0 areas', () => {
   const game = createTopologyGame();
   const room = game.experimentalRooms.find(area => area.roomNumber === 1);
   const hallway = game.experimentalRooms.find(area => area.roomNumber === 0);
   const [door] = game.experimentalDoors;
 
-  assert.equal(game.experimentalRooms.length, 4);
+  assert.equal(game.experimentalRooms.length, 5);
   assert.equal(hallway.areaType, EXPERIMENTAL_AREA_TYPE.HALLWAY);
   assert.equal(hallway.name, 'Sector 0 Shop');
   assert.equal(game.experimentalRooms.filter(isSector0ShopArea).length, 1);
   assert.equal(isSector0ShopArea(room), false);
   assert.equal(hallway.id, 'experimental-sector-0-weapons-shop');
-  assert.equal(room.connectedAreaIds.length, 3);
+  assert.equal(room.connectedAreaIds.length, 4);
   assert.ok(room.connectedAreaIds.includes(hallway.id));
   assert.deepEqual(hallway.connectedAreaIds, [room.id]);
   assert.deepEqual(door.roomIds, [room.id, hallway.id]);
@@ -55,6 +55,29 @@ test('Adventure topology connects Sector 1 to three terminal Sector 0 areas', ()
   assert.equal(hallway.bounds.bottom - hallway.bounds.top, EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH);
   assert.equal(hallway.walls.length, 3);
   assert.equal(hallway.entrances.length, 1);
+});
+
+test('The Space Bar mirrors top terminal geometry below Sector 1 and transitions bidirectionally', () => {
+  const game = createTopologyGame();
+  const room = game.experimentalRooms.find(area => area.roomNumber === 1);
+  const spaceBar = game.experimentalRooms.find(area => area.id === 'experimental-sector-0-space-bar');
+  const door = game.experimentalDoors.find(candidate => candidate.roomIds.includes(spaceBar.id));
+  assert.equal(spaceBar.bounds.top, room.bounds.bottom);
+  assert.equal(spaceBar.bounds.right - spaceBar.bounds.left, EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH);
+  assert.equal(spaceBar.bounds.bottom - spaceBar.bounds.top, EXPERIMENTAL_SECTOR_0_DEAD_END_DEPTH);
+  assert.equal(spaceBar.walls.length, 3);
+  assert.equal(door.orientation, 'HORIZONTAL');
+
+  const player = new Player(door.openingCenter, room.bounds.bottom, 1);
+  const clearance = player.radius + door.transitionTolerance + 1;
+  player.roomId = room.id;
+  player.y = room.bounds.bottom + clearance;
+  game.experimentalAreaIndexes.get(room.id).players.add(player);
+  Game.prototype.resolveExperimentalPlayerRoomMembership.call(game, player);
+  assert.equal(player.roomId, spaceBar.id);
+  player.y = room.bounds.bottom - clearance;
+  Game.prototype.resolveExperimentalPlayerRoomMembership.call(game, player);
+  assert.equal(player.roomId, room.id);
 });
 
 test('Sector 1 left boundary is split around the hallway opening', () => {
