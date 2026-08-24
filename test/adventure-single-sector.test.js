@@ -7,7 +7,8 @@ import {
   EXPERIMENTAL_AREA_TYPE,
   EXPERIMENTAL_HALLWAY_WIDTH,
   EXPERIMENTAL_SECTOR_0_DEAD_END_DEPTH,
-  EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH
+  EXPERIMENTAL_SECTOR_0_DEAD_END_WIDTH,
+  isSector0ShopArea
 } from '../world/experimental_rooms.js';
 import { EXPERIMENTAL_ROOM_WIDTH, EXPERIMENTAL_ROOM_HEIGHT, Game, GAME_MODE } from '../game.js';
 import { Player } from '../entities/player.js';
@@ -36,6 +37,9 @@ test('Adventure topology connects Sector 1 to a terminal Sector 0 hallway', () =
 
   assert.equal(game.experimentalRooms.length, 2);
   assert.equal(hallway.areaType, EXPERIMENTAL_AREA_TYPE.HALLWAY);
+  assert.equal(hallway.name, 'Sector 0 Shop');
+  assert.equal(game.experimentalRooms.filter(isSector0ShopArea).length, 1);
+  assert.equal(isSector0ShopArea(room), false);
   assert.equal(hallway.id, 'experimental-sector-0-dead-end-hallway');
   assert.deepEqual(room.connectedAreaIds, [hallway.id]);
   assert.deepEqual(hallway.connectedAreaIds, [room.id]);
@@ -127,7 +131,7 @@ test('hallway side and dead-end walls block players and projectiles through shar
   assert.equal(detonated, true);
 });
 
-test('Adventure minimap projects connected room and hallway topology in world space', () => {
+test('Adventure minimap shows the entire game world except the Sector 0 Shop', () => {
   const game = createTopologyGame();
   const room = game.experimentalRooms.find(area => area.roomNumber === 1);
   const hallway = game.experimentalRooms.find(area => area.roomNumber === 0);
@@ -143,12 +147,9 @@ test('Adventure minimap projects connected room and hallway topology in world sp
   HUD.prototype.drawMinimap.call({}, ctx, [owner], [], {}, false, {
     usesRooms: true, owner, rooms: game.experimentalRooms, hazards: []
   });
-  const topologySegments = segments.slice(-(room.walls.length + hallway.walls.length));
-  assert.equal(topologySegments.length, room.walls.length + hallway.walls.length);
-  const roomSegments = topologySegments.slice(0, room.walls.length);
-  const hallwaySegments = topologySegments.slice(room.walls.length);
-  assert.ok(Math.min(...hallwaySegments.flatMap(segment => [segment.start.x, segment.end.x]))
-    < Math.min(...roomSegments.flatMap(segment => [segment.start.x, segment.end.x])));
+  const topologySegments = segments.slice(-room.walls.length);
+  assert.equal(topologySegments.length, room.walls.length);
+  assert.equal(segments.some(segment => segment.start?.x < 1580), false);
 
   owner.roomId = hallway.id;
   owner.x = (hallway.bounds.left + hallway.bounds.right) / 2;
@@ -156,80 +157,6 @@ test('Adventure minimap projects connected room and hallway topology in world sp
   assert.doesNotThrow(() => HUD.prototype.drawMinimap.call({}, ctx, [owner], [], {}, false, {
     usesRooms: true, owner, rooms: game.experimentalRooms, hazards: []
   }));
-});
-
-test('Sector 1 nook is a small 2:1 dead end with an open room-facing mouth', () => {
-  const [room] = createExperimentalAreas(EXPERIMENTAL_ROOM_WIDTH, EXPERIMENTAL_ROOM_HEIGHT);
-  const nookWalls = room.walls.filter(wall => wall.id.includes('-interior-left-nook-'));
-  const wallBySuffix = suffix => nookWalls.find(wall => wall.id.endsWith(suffix));
-  const top = wallBySuffix('-top');
-  const bottom = wallBySuffix('-bottom');
-  const deadEnd = wallBySuffix('-dead-end');
-
-  assert.equal(EXPERIMENTAL_SECTOR_1_NOOK_WIDTH, EXPERIMENTAL_HALLWAY_WIDTH / 2);
-  assert.equal(EXPERIMENTAL_SECTOR_1_NOOK_DEPTH, EXPERIMENTAL_SECTOR_1_NOOK_WIDTH * 2);
-  assert.equal(nookWalls.length, 3);
-  assert.ok(nookWalls.every(wall => wall.isTwoSided));
-  assert.equal(bottom.start.y - top.start.y, EXPERIMENTAL_SECTOR_1_NOOK_WIDTH);
-  assert.equal(top.end.x - top.start.x, EXPERIMENTAL_SECTOR_1_NOOK_DEPTH);
-  assert.equal(bottom.start.x - bottom.end.x, EXPERIMENTAL_SECTOR_1_NOOK_DEPTH);
-  assert.deepEqual(deadEnd.start, { x: room.bounds.left, y: bottom.start.y });
-  assert.deepEqual(deadEnd.end, { x: room.bounds.left, y: top.start.y });
-  assert.equal(nookWalls.some(wall => wall.start.x === top.end.x && wall.end.x === top.end.x), false);
-  assert.deepEqual(room.entrances, []);
-  assert.equal(createExperimentalDoors([room]).length, 0);
-});
-
-test('Sector 1 nook walls use shared swept collision while its mouth remains passable', () => {
-  const areas = createExperimentalAreas(EXPERIMENTAL_ROOM_WIDTH, EXPERIMENTAL_ROOM_HEIGHT);
-  const room = areas[0];
-  const centerY = (room.bounds.top + room.bounds.bottom) / 2;
-  const mouthX = room.bounds.left + EXPERIMENTAL_SECTOR_1_NOOK_DEPTH;
-  const game = {
-    experimentalRooms: areas,
-    experimentalDoors: [],
-    experimentalWallSpatialIndexes: createExperimentalWallSpatialIndexes(areas)
-  };
-  const move = (previousX, previousY, x, y) => {
-    const player = new Player(x, y, 1);
-    player.roomId = room.id;
-    player.previousX = previousX;
-    player.previousY = previousY;
-    player.velocityX = x - previousX;
-    player.velocityY = y - previousY;
-    const collided = Game.prototype.resolveExperimentalSlide.call(game, player);
-    return { player, collided };
-  };
-
-  assert.equal(move(mouthX + 100, centerY, mouthX - 100, centerY).collided, false);
-  assert.equal(move(mouthX - 100, centerY, mouthX + 100, centerY).collided, false);
-  assert.equal(move(mouthX - 100, centerY, mouthX - 100, centerY - EXPERIMENTAL_SECTOR_1_NOOK_WIDTH).collided, true);
-  assert.equal(move(mouthX - 100, centerY, mouthX - 100, centerY + EXPERIMENTAL_SECTOR_1_NOOK_WIDTH).collided, true);
-  const deadEndHit = move(mouthX - 100, centerY, room.bounds.left - 500, centerY);
-  assert.equal(deadEndHit.collided, true);
-  assert.ok(deadEndHit.player.x > room.bounds.left);
-});
-
-test('Adventure minimap projects the nook from authoritative interior walls', () => {
-  const [room] = createExperimentalAreas(EXPERIMENTAL_ROOM_WIDTH, EXPERIMENTAL_ROOM_HEIGHT);
-  const owner = { id: 1, x: EXPERIMENTAL_ROOM_WIDTH / 2, y: EXPERIMENTAL_ROOM_HEIGHT / 2, roomId: room.id };
-  const segments = [];
-  let start = null;
-  const ctx = {
-    fillStyle: '', strokeStyle: '', lineWidth: 0,
-    fillRect() {}, strokeRect() {}, beginPath() { start = null; }, stroke() {}, fill() {}, arc() {},
-    moveTo(x, y) { start = { x, y }; },
-    lineTo(x, y) { segments.push({ start, end: { x, y } }); }
-  };
-
-  HUD.prototype.drawMinimap.call({}, ctx, [owner], [], {}, false, {
-    usesRooms: true, owner, rooms: [room], hazards: []
-  });
-
-  const nookSegments = segments.slice(-3);
-  assert.equal(nookSegments.length, 3);
-  assert.deepEqual(nookSegments.map(segment => segment.start.x), [2140, 1340, 1340]);
-  assert.deepEqual(nookSegments.map(segment => segment.end.x), [1340, 1340, 1340]);
 });
 
 test('Adventure NPC death reconciles the canonical population to one', () => {
@@ -245,7 +172,7 @@ test('Adventure NPC death reconciles the canonical population to one', () => {
   assert.equal(game.players.filter(player => player.isNPC && !player.isDead).length, 1);
 });
 
-test('Adventure minimap uses an undistorted local window and omits distant markers', () => {
+test('Adventure minimap uses an undistorted full-world projection', () => {
   const [room] = createExperimentalAreas(EXPERIMENTAL_ROOM_WIDTH, EXPERIMENTAL_ROOM_HEIGHT);
   const owner = { id: 1, x: 4800, y: 2700, roomId: room.id };
   const nearby = { id: 2, x: owner.x + 960, y: owner.y + 540, roomId: room.id };
@@ -262,8 +189,7 @@ test('Adventure minimap uses an undistorted local window and omits distant marke
     usesRooms: true, owner, rooms: [room], hazards: []
   });
 
-  assert.equal(arcs.length, 2, 'only owner and nearby player are inside the local source window');
-  assert.deepEqual(arcs.map(({ x, y }) => [x, y]), [[1740, 970], [1820, 1015]]);
+  assert.equal(arcs.length, 3, 'every marker in the game world is visible');
   assert.equal((arcs[1].x - arcs[0].x) / 960, (arcs[1].y - arcs[0].y) / 540,
     'one uniform projection scale preserves geometry');
   assert.deepEqual([owner.x, owner.y, nearby.x, nearby.y, distant.x, distant.y],

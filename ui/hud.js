@@ -14,6 +14,7 @@ export class HUD {
 
         this.drawMinimap(ctx, players, asteroids, camera, swapUI, minimapContext);
         this.drawScoreboard(ctx, players, swapUI, minimapContext?.gameMode);
+        this.drawShopPrompts(ctx, minimapContext?.shopEligible, minimapContext?.shopMenuOpen);
         
         if (isSplitScreen) {
             // Local PVP: Two meters, centered between boxes and center line
@@ -34,6 +35,21 @@ export class HUD {
             this.drawLevelUpChoices(ctx, players[0], 1920 / 2, 74);
             this.drawSpeedMeter(ctx, players[0], 1920 / 2, 980, 5);
         }
+    }
+
+    drawShopPrompts(ctx, shopEligible, shopMenuOpen) {
+        if (!shopEligible || shopMenuOpen) return;
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#fff';
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 12;
+        ctx.font = 'bold 28px Orbitron';
+        ctx.fillText('Purchase Upgrades', 960, 790);
+        ctx.font = '18px Orbitron';
+        ctx.fillStyle = '#00ffff';
+        ctx.fillText('Press Space Bar to Enter Shop', 960, 830);
+        ctx.restore();
     }
 
     drawLevelDisplay(ctx, player, x, y) {
@@ -244,8 +260,10 @@ export class HUD {
 
         ctx.font = 'bold 14px Orbitron';
         ctx.fillStyle = player.color || '#fff';
-        ctx.textAlign = 'center';
-        ctx.fillText(this.getPlayerFacingName(player, stats), x + width / 2, y + 24);
+        ctx.textAlign = 'left';
+        ctx.fillText('EARTHLING', x + 10, y + 24);
+        ctx.textAlign = 'right';
+        ctx.fillText(`Scrap - ${player.scrap || 0}`, x + width - 10, y + 24);
 
         ctx.strokeStyle = 'rgba(0, 255, 255, 0.3)';
         ctx.beginPath();
@@ -522,16 +540,17 @@ export class HUD {
             : null;
         const usesRoom = Boolean(minimapContext?.usesRooms && room);
         const scale = mapWidth / WORLD_WIDTH;
+        // Adventure shows the complete playable world, deliberately excluding
+        // the terminal Sector 0 Shop so its location remains an exploration cue.
         const topologyAreas = usesRoom
-            ? [room, ...(room.connectedAreaIds || []).map(id =>
-                minimapContext.rooms.find(candidate => candidate.id === id)).filter(Boolean)]
+            ? minimapContext.rooms.filter(area => area.role !== 'SHOP')
             : [];
-        const topologyBounds = usesRoom ? {
-            left: minimapContext.owner.x - DESIGN_WIDTH,
-            right: minimapContext.owner.x + DESIGN_WIDTH,
-            top: minimapContext.owner.y - DESIGN_HEIGHT,
-            bottom: minimapContext.owner.y + DESIGN_HEIGHT
-        } : null;
+        const topologyBounds = usesRoom ? topologyAreas.reduce((bounds, area) => ({
+            left: Math.min(bounds.left, area.bounds.left),
+            right: Math.max(bounds.right, area.bounds.right),
+            top: Math.min(bounds.top, area.bounds.top),
+            bottom: Math.max(bounds.bottom, area.bounds.bottom)
+        }), { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity }) : null;
         const topologyScale = usesRoom ? Math.min(
             mapWidth / (topologyBounds.right - topologyBounds.left),
             mapHeight / (topologyBounds.bottom - topologyBounds.top)
@@ -546,8 +565,9 @@ export class HUD {
                 y: topologyOffsetY + (entity.y - topologyBounds.top) * topologyScale
             }
             : { x: x + entity.x * scale, y: y + entity.y * scale };
+        const mapAreaIds = new Set(topologyAreas.map(area => area.id));
         const belongsOnMap = entity => !minimapContext?.usesRooms
-            || (usesRoom && entity.roomId === minimapContext.owner.roomId
+            || (usesRoom && mapAreaIds.has(entity.roomId)
                 && entity.x >= topologyBounds.left && entity.x <= topologyBounds.right
                 && entity.y >= topologyBounds.top && entity.y <= topologyBounds.bottom);
 

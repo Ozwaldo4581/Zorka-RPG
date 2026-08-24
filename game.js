@@ -25,7 +25,8 @@ import {
     EXPERIMENTAL_SHORTCUT_ID,
     SECTOR_9_BBG_ENCOUNTER,
     getSector9BBGImageRect,
-    getSector9BBGAnchorWorldPosition
+    getSector9BBGAnchorWorldPosition,
+    isSector0ShopArea
 } from './world/experimental_rooms.js';
 import { DESIGN_WIDTH, DESIGN_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT } from './world_config.js';
 
@@ -49,6 +50,12 @@ export const PLAYER_COLORS = Object.freeze([
 export const DEFAULT_P1_CONTROL_MODE = 'KEYBOARD';
 export const MISSILE_DAMAGE = 3;
 export const RPG_DEBRIS_DROP_CHANCE = 0.33;
+export const RPG_DEBRIS_SCRAP_VALUE = 10;
+export const SECTOR_0_SHOP_PRICES = Object.freeze([
+    Object.freeze([100, 200, 300, 400, 500]),
+    Object.freeze([1000, 2000, 3000, 4000, 5000]),
+    Object.freeze([2000, 4000, 6000, 8000, 10000])
+]);
 
 export function getExperimentalNPCCapsuleBudget(npcLevel, roomNumber) {
     return Math.max(1, Math.floor(Number(npcLevel) || 1))
@@ -268,6 +275,7 @@ export class Game {
         this.pauseMenuIndex = 0;
         this.pauseMenuCooldown = 0;
         this.activeModal = null;
+        this.isShopMenuOpen = false;
         this.focusBeforeModal = null;
         
         // Gamepad input is opt-in from the main Options screen.
@@ -852,6 +860,12 @@ export class Game {
                 return;
             }
             this.keys[e.code] = true;
+            if (e.code === 'Space' && !e.repeat && Game.prototype.isHumanInSector0Shop.call(this)) {
+                this.keys[e.code] = false;
+                Game.prototype.openSector0Shop.call(this);
+                e.preventDefault();
+                return;
+            }
             if (e.code === 'KeyE' && !e.repeat && this.isInGameplayState()) {
                 Game.prototype.handleMissileFire.call(this, 1);
                 e.preventDefault();
@@ -866,6 +880,10 @@ export class Game {
             }
             if (e.code === 'Escape' && this.activeModal === 'quit') {
                 this.closeQuitConfirmation();
+                return;
+            }
+            if (e.code === 'Escape' && this.isShopMenuOpen) {
+                Game.prototype.closeSector0Shop.call(this);
                 return;
             }
             if (e.code === 'Escape' && this.isInGameplayState()) {
@@ -1284,6 +1302,12 @@ export class Game {
 
         document.getElementById('btn-quit-yes').addEventListener('click', () => this.confirmQuit());
         document.getElementById('btn-quit-no').addEventListener('click', () => this.closeQuitConfirmation());
+        document.querySelectorAll('[data-shop-slot]').forEach(button => button.addEventListener('click', () => {
+            Game.prototype.purchaseSector0ShopUpgrade.call(this, button.dataset.shopSlot);
+        }));
+        document.getElementById('btn-sector-0-shop-back')?.addEventListener('click', () => {
+            Game.prototype.closeSector0Shop.call(this);
+        });
         // Transformation Kills Logic
         const transValueEl = document.getElementById('trans-value');
         const transIncBtn = document.getElementById('trans-inc');
@@ -1329,6 +1353,67 @@ export class Game {
         return this.gameState !== 'MENU' && this.gameState !== 'SPLASH' && !this.arcadeGameOver;
     }
 
+    getHumanPlayer() {
+        return (this.players || []).find(player => !player.isNPC) || null;
+    }
+
+    isHumanInSector0Shop() {
+        const player = Game.prototype.getHumanPlayer.call(this);
+        return this.gameState === GAME_MODE.EXPERIMENTAL && Boolean(player)
+            && !player.isDead && !player.isEliminated
+            && isSector0ShopArea(player.roomId, this.experimentalRooms || []);
+    }
+
+    openSector0Shop() {
+        if (!Game.prototype.isHumanInSector0Shop.call(this) || this.isShopMenuOpen
+            || this.isPauseMenuOpen || this.activeModal || this.optionsOpenedFromPause) return false;
+        this.resetLockInputs?.();
+        this.isShopMenuOpen = true;
+        const menu = document.getElementById('sector-0-shop-menu');
+        menu?.classList.remove('hidden');
+        Game.prototype.refreshSector0ShopMenu.call(this);
+        this.setInitialMenuFocus?.(menu);
+        return true;
+    }
+
+    closeSector0Shop() {
+        this.isShopMenuOpen = false;
+        document.getElementById('sector-0-shop-menu')?.classList.add('hidden');
+        return true;
+    }
+
+    getSector0ShopOffer(player, slot) {
+        const index = Math.floor(Number(slot)) - 1;
+        const tier = player?.shopUpgradeTiers?.[index];
+        if (index < 0 || index >= 5 || !Number.isInteger(tier) || tier >= SECTOR_0_SHOP_PRICES.length) return null;
+        return { slot: index + 1, tier, price: SECTOR_0_SHOP_PRICES[tier][index] };
+    }
+
+    purchaseSector0ShopUpgrade(slot) {
+        const player = Game.prototype.getHumanPlayer.call(this);
+        if (!this.isShopMenuOpen || !Game.prototype.isHumanInSector0Shop.call(this)) return false;
+        const offer = Game.prototype.getSector0ShopOffer.call(this, player, slot);
+        if (!offer || player.scrap < offer.price || !player.canActivateCapsuleSlot(offer.slot)) return false;
+        if (!player.applyShopUpgrade(offer.slot)) return false;
+        player.scrap -= offer.price;
+        player.shopUpgradeTiers[offer.slot - 1]++;
+        Game.prototype.refreshSector0ShopMenu.call(this);
+        return true;
+    }
+
+    refreshSector0ShopMenu() {
+        const player = Game.prototype.getHumanPlayer.call(this);
+        if (typeof document === 'undefined') return;
+        const balance = document.getElementById('sector-0-shop-balance');
+        if (balance) balance.textContent = `Scrap - ${player?.scrap || 0}`;
+        document.querySelectorAll?.('[data-shop-slot]').forEach(button => {
+            const offer = Game.prototype.getSector0ShopOffer.call(this, player, button.dataset.shopSlot);
+            const price = button.closest('.shop-row')?.querySelector('.shop-price');
+            if (price) price.textContent = offer ? offer.price.toLocaleString('en-US') : 'CAPPED';
+            button.disabled = !offer || player.scrap < offer.price || !player.canActivateCapsuleSlot(offer.slot);
+        });
+    }
+
     resetMouseLockInput() {
         this.mouse.m2Held = false;
         this.mouse.m2Pressed = false;
@@ -1371,7 +1456,8 @@ export class Game {
             levelUp.player.applyLevelUpgrade(levelUp.choice);
             return true;
         }
-        const capsule = this.hud.getPowerUpActionAt(point.x, point.y, this.players, this.gameState === 'PVP');
+        const capsule = this.gameState === GAME_MODE.EXPERIMENTAL ? null
+            : this.hud.getPowerUpActionAt(point.x, point.y, this.players, this.gameState === 'PVP');
         if (capsule) {
             capsule.player.consumeCapsules();
             return true;
@@ -2611,6 +2697,18 @@ export class Game {
 
     drawExperimentalMessages(ctx) {
         if (this.gameState !== GAME_MODE.EXPERIMENTAL) return;
+        const shop = (this.experimentalRooms || []).find(area => isSector0ShopArea(area));
+        if (shop) {
+            ctx.save();
+            this.camera.apply(ctx, (shop.bounds.left + shop.bounds.right) / 2, (shop.bounds.top + shop.bounds.bottom) / 2);
+            ctx.textAlign = 'center';
+            ctx.fillStyle = '#00ffff';
+            ctx.shadowColor = '#000';
+            ctx.shadowBlur = 12;
+            ctx.font = 'bold 34px Orbitron';
+            ctx.fillText('Purchase Upgrades', 0, 0);
+            ctx.restore();
+        }
         ctx.save();
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
@@ -3176,6 +3274,8 @@ export class Game {
 
         if (this.gameState === 'SPLASH') {
             this.updateSplash(dt);
+        } else if (this.isShopMenuOpen) {
+            this.updateMenuNavigation(dt);
         } else if (this.victoryScreenActive || this.victoryContinueConfirmationActive) {
             this.updateMenuNavigation(dt);
         } else if (this.activeModal === 'quit') {
@@ -4453,7 +4553,15 @@ export class Game {
         // Award the confirmed kill before Hardcore clears the victim's progression.
         if (killer && killer !== player && typeof killer.addCapsule === 'function' && !player.noKillReward) {
             if (player.isNPC) this.awardXP(killer, Game.prototype.getNPCXPReward.call(this, player), player);
-            killer.addCapsule();
+            if (this.gameState === GAME_MODE.EXPERIMENTAL && player.isNPC) {
+                let debrisCount = 10;
+                for (let level = 0; level < Math.max(0, Math.floor(player.level || 0)); level++) {
+                    if (Math.random() < 0.5) debrisCount++;
+                }
+                Game.prototype.spawnDebrisBurst.call(this, player.x, player.y, player.roomId, debrisCount);
+            } else {
+                killer.addCapsule();
+            }
             killer.score = (killer.score || 0) + 1;
             killer.killStreak = (killer.killStreak || 0) + 1;
             if (killer.killStreak > (killer.highTide || 0)) killer.highTide = killer.killStreak;
@@ -4749,7 +4857,7 @@ export class Game {
                 if (checkCollision(player, h)) {
                     if (this.gameState === GAME_MODE.EXPERIMENTAL && h.isDebris) {
                         if (!Game.prototype.isHumanPlayerEntity.call(this, player)) continue;
-                        player.addScrap(1);
+                        player.addScrap(RPG_DEBRIS_SCRAP_VALUE);
                         h.isDestroyed = true;
                         Game.prototype.unindexExperimentalEntity.call(this, 'hazards', h);
                         const debrisIndex = this.hazards.indexOf(h);
@@ -5077,6 +5185,8 @@ export class Game {
                     rooms: this.experimentalRooms,
                     hazards: this.hazards,
                     gameMode: this.gameState,
+                    shopEligible: Game.prototype.isHumanInSector0Shop.call(this),
+                    shopMenuOpen: this.isShopMenuOpen,
                     profileName: this.gameState === GAME_MODE.EXPERIMENTAL
                         && Number.isInteger(this.selectedExperimentalProfileSlot)
                         ? this.experimentalProfiles.getProfile(this.selectedExperimentalProfileSlot)?.name || null

@@ -75,6 +75,7 @@ export class Player {
         this.powerUpCapsules = 0;
         // Session-local RPG resource. Game owns collection outcomes; Player owns the count.
         this.scrap = 0;
+        this.shopUpgradeTiers = [0, 0, 0, 0, 0];
         this.maxPowerUpSlots = 5;
         this.activeGun = 'Normal'; // Ballistic forms: Normal/Base Gun, Antigun, Double
         this.weaponStreamCounts = { Laser: 0, Antigun: 0, Double: 0, Orb: 0 };
@@ -166,6 +167,16 @@ export class Player {
         const gained = Math.max(0, Math.floor(Number(amount) || 0));
         this.scrap += gained;
         return gained;
+    }
+
+    applyShopUpgrade(slot) {
+        const normalizedSlot = Math.floor(Number(slot));
+        if (!this.canActivateCapsuleSlot(normalizedSlot)) return false;
+        const previousCapsules = this.powerUpCapsules;
+        this.powerUpCapsules = normalizedSlot;
+        const applied = this.activatePowerUp();
+        if (!applied) this.powerUpCapsules = previousCapsules;
+        return applied;
     }
 
     getXPRequirement(level = this.level) {
@@ -491,7 +502,7 @@ export class Player {
         return null;
     }
 
-    handleGamepadPowerUpIntents(gamepad) {
+    handleGamepadPowerUpIntents(gamepad, allowCapsuleConsumption = true) {
         const pressed = [0, 1, 2, 3].map(index => Boolean(gamepad?.buttons?.[index]?.pressed));
         const justPressed = pressed.map((value, index) => value && !this.faceButtonState[index]);
         this.faceButtonState = pressed;
@@ -500,7 +511,7 @@ export class Player {
             if (justPressed[2]) this.useProjectileLevelPowerUp();
             if (justPressed[3]) this.useSpeedLevelPowerUp();
             if (justPressed[1]) this.useGeneralLevelPowerUp();
-        } else if (justPressed[0]) {
+        } else if (justPressed[0] && allowCapsuleConsumption) {
             this.consumeCapsules();
         }
     }
@@ -769,7 +780,7 @@ export class Player {
                     this.isThrusting = true;
                 }
 
-                this.handleGamepadPowerUpIntents(gp);
+                this.handleGamepadPowerUpIntents(gp, !worldRules?.usesRooms);
 
             }
             
@@ -808,7 +819,7 @@ export class Player {
                     this.isThrusting = true;
                 }
                 
-                if (keys['Space']) {
+                if (keys['Space'] && !worldRules?.usesRooms) {
                     this.activatePowerUp();
                     keys['Space'] = false;
                 }
