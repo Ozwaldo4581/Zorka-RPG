@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { Player } from '../entities/player.js';
-import { Game, GAME_MODE, SECTOR_0_WEAPON_CATALOG, SPACE_BAR_ROUND_PRICE, getNPCCapsuleRewardCount } from '../game.js';
+import { Game, GAME_MODE, SECTOR_0_WEAPON_CATALOG, SECTOR_0_UTILITY_CATALOG, SPACE_BAR_ROUND_PRICE, getNPCCapsuleRewardCount } from '../game.js';
 import { createExperimentalAreas, isSector0ShopArea, EXPERIMENTAL_AREA_ROLE } from '../world/experimental_rooms.js';
 
 const areas = createExperimentalAreas(9600, 5400);
@@ -17,6 +17,7 @@ test('Shop DOM keeps purchase rows and Back but has no duplicate primary selecto
     assert.match(html, /id="btn-sector-0-shop-back"/);
     assert.doesNotMatch(html, /data-shop-select-weapon|shop-selector|shop-capsule/);
     assert.equal((html.match(/shop-row shop-row-three-column/g) || []).length, 7);
+    assert.equal((html.match(/data-shop-utility=/g) || []).length, 7);
     for (const text of ['Boost', 'Emergency Break', 'Scrap Collector', 'Beam Hook', 'Phase Shifter', "4D Jacob's Latter", '1/100 Black Hole', 'Spacebar']) {
         assert.match(html, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     }
@@ -27,6 +28,40 @@ test('Shop DOM keeps purchase rows and Back but has no duplicate primary selecto
     assert.equal((html.match(/data-stub-shop-back/g) || []).length, 3);
     assert.equal((html.match(/id="btn-buy-round"/g) || []).length, 1);
     assert.match(html, /1,000<\/span><button id="btn-buy-round"[^>]*>Buy A Round/);
+});
+
+test('Utility catalog prices are authoritative and purchases are atomic one-time unlocks', () => {
+    assert.deepEqual(SECTOR_0_UTILITY_CATALOG.map(({ id, price, input }) => [id, price, input]), [
+        ['Boost', 500, 'Spacebar'], ['Emergency Break', 500, 'Q'], ['Scrap Collector', 1000, '1'],
+        ['Beam Hook', 1000, '2'], ['Phase Shifter', 5000, '3'], ["4D Jacob's Latter", 5000, '4'],
+        ['1/100 Black Hole', 10000, '5']
+    ]);
+    const utilityShop = areas.find(area => area.role === EXPERIMENTAL_AREA_ROLE.UTILITY_SHOP);
+    const player = new Player(0, 0, 1);
+    player.roomId = utilityShop.id;
+    player.scrap = 499;
+    const game = { ...shopGame(player), activeSector0Shop: 'UTILITY_SHOP' };
+    assert.equal(Game.prototype.handleUtilityShopIntent.call(game, 'Boost'), false);
+    assert.deepEqual([player.scrap, player.ownsUtility('Boost')], [499, false]);
+    player.scrap = 10500;
+    assert.equal(Game.prototype.handleUtilityShopIntent.call(game, 'Boost'), true);
+    assert.deepEqual([player.scrap, player.ownsUtility('Boost')], [10000, true]);
+    assert.equal(Game.prototype.handleUtilityShopIntent.call(game, 'Boost'), false);
+    assert.equal(player.scrap, 10000);
+    assert.equal(Game.prototype.handleUtilityShopIntent.call(game, '1/100 Black Hole'), true);
+    assert.deepEqual([player.scrap, player.ownsUtility('1/100 Black Hole')], [0, true]);
+    assert.equal(Game.prototype.handleUtilityShopIntent.call(game, 'unknown'), false);
+});
+
+test('Utility ownership remains Player-owned through death cleanup and respawn', () => {
+    const player = new Player(0, 0, 1);
+    for (const { id } of SECTOR_0_UTILITY_CATALOG) assert.equal(player.purchaseUtility(id), true);
+    player.resetTransientLifeState();
+    assert.ok(SECTOR_0_UTILITY_CATALOG.every(({ id }) => player.ownsUtility(id)));
+    player.isDead = true;
+    const game = { players: [player], gameState: GAME_MODE.SOLO, audio: { startGameplayMusic() {} } };
+    Game.prototype.respawnPlayer.call(game, player);
+    assert.ok(SECTOR_0_UTILITY_CATALOG.every(({ id }) => player.ownsUtility(id)));
 });
 
 test('Sector 0 exposes four semantic interaction areas while Weapons keeps purchase eligibility', () => {

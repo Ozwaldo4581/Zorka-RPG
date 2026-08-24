@@ -60,6 +60,15 @@ export const SECTOR_0_WEAPON_CATALOG = Object.freeze([
     Object.freeze({ id: 'Orb', label: 'Orb', prices: Object.freeze([1000, 2500, 4500]) }),
     Object.freeze({ id: 'Ghost', label: 'Ghost', prices: Object.freeze([5000, 10000, 15000]) })
 ]);
+export const SECTOR_0_UTILITY_CATALOG = Object.freeze([
+    Object.freeze({ id: 'Boost', price: 500, input: 'Spacebar' }),
+    Object.freeze({ id: 'Emergency Break', price: 500, input: 'Q' }),
+    Object.freeze({ id: 'Scrap Collector', price: 1000, input: '1' }),
+    Object.freeze({ id: 'Beam Hook', price: 1000, input: '2' }),
+    Object.freeze({ id: 'Phase Shifter', price: 5000, input: '3' }),
+    Object.freeze({ id: "4D Jacob's Latter", price: 5000, input: '4' }),
+    Object.freeze({ id: '1/100 Black Hole', price: 10000, input: '5' })
+]);
 // Compatibility export retained for integrations that import the old name.
 export const SECTOR_0_SHOP_PRICES = SECTOR_0_WEAPON_CATALOG;
 
@@ -1314,6 +1323,9 @@ export class Game {
         document.querySelectorAll('[data-shop-weapon]').forEach(button => button.addEventListener('click', () => {
             Game.prototype.handleSector0ShopWeaponIntent.call(this, button.dataset.shopWeapon);
         }));
+        document.querySelectorAll('[data-shop-utility]').forEach(button => button.addEventListener('click', () => {
+            Game.prototype.handleUtilityShopIntent.call(this, button.dataset.shopUtility);
+        }));
         document.getElementById('btn-buy-round')?.addEventListener('click', event => {
             event.stopPropagation();
             Game.prototype.handleSpaceBarRoundIntent.call(this);
@@ -1410,6 +1422,7 @@ export class Game {
         const menu = document.getElementById(menuId);
         menu?.classList.remove('hidden');
         if (shopType === 'WEAPONS_SHOP') Game.prototype.refreshSector0ShopMenu.call(this);
+        if (shopType === 'UTILITY_SHOP') Game.prototype.refreshUtilityShopMenu.call(this);
         if (shopType === 'SPACE_BAR') Game.prototype.refreshSpaceBarMenu.call(this);
         this.setInitialMenuFocus?.(menu);
         return true;
@@ -1468,6 +1481,35 @@ export class Game {
             button.textContent = offer?.action === 'capped' ? 'CAPPED' : offer?.product.label || button.dataset.shopWeapon;
             button.disabled = !offer || offer.action === 'capped'
                 || (offer.action === 'purchase' && player.scrap < offer.price);
+        });
+    }
+
+    getUtilityShopOffer(player, utilityId) {
+        const product = SECTOR_0_UTILITY_CATALOG.find(entry => entry.id === utilityId);
+        if (!product || !player) return null;
+        return { product, price: product.price, owned: player.ownsUtility(utilityId) };
+    }
+
+    handleUtilityShopIntent(utilityId) {
+        const player = Game.prototype.getHumanPlayer.call(this);
+        const area = Game.prototype.getHumanSector0InteractionArea.call(this);
+        if (!this.isShopMenuOpen || this.activeSector0Shop !== 'UTILITY_SHOP'
+            || area?.interaction !== 'UTILITY_SHOP') return false;
+        const offer = Game.prototype.getUtilityShopOffer.call(this, player, utilityId);
+        if (!offer || offer.owned || player.scrap < offer.price || !player.purchaseUtility(utilityId)) return false;
+        player.scrap -= offer.price;
+        Game.prototype.refreshUtilityShopMenu.call(this);
+        return true;
+    }
+
+    refreshUtilityShopMenu() {
+        if (typeof document === 'undefined') return;
+        const player = Game.prototype.getHumanPlayer.call(this);
+        const balance = document.getElementById('utility-shop-balance');
+        if (balance) balance.textContent = `Scrap - ${player?.scrap || 0}`;
+        document.querySelectorAll?.('[data-shop-utility]').forEach(button => {
+            const offer = Game.prototype.getUtilityShopOffer.call(this, player, button.dataset.shopUtility);
+            button.disabled = !offer || offer.owned || player.scrap < offer.price;
         });
     }
 
