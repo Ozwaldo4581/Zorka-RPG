@@ -41,7 +41,7 @@ export const DAMAGE_PULSE_DURATION = 0.35;
 export const SHOP_WEAPON_IDS = Object.freeze(['Antigun', 'Doublegun', 'Missile', 'Laser', 'Orb', 'Ghost']);
 export const PRIMARY_WEAPON_IDS = Object.freeze(['Ballistic', 'Antigun', 'Doublegun', 'Laser', 'Orb', 'Ghost']);
 export const UTILITY_IDS = Object.freeze([
-    'Boost', 'Emergency Break', 'Scrap Collector', 'Beam Hook',
+    'Boost', 'Emergency Break', 'Scrap Magnet', 'Beam Hook',
     'Phase Shifter', "4d Jacob's Ladder", '1/100 Black Hole'
 ]);
 
@@ -92,7 +92,7 @@ export class Player {
         this.boostCooldownTimer = 0;
         this.boostRestoreSpeed = null;
         this.emergencyBrakeActive = false;
-        this.scrapCollectorActive = false;
+        this.scrapMagnetActive = false;
         this.beamHookTarget = null;
         this.beamHookDistance = 0;
         this.beamHookTargetX = 0;
@@ -206,6 +206,20 @@ export class Player {
         return true;
     }
 
+    getScrapMagnetRange() {
+        const shipLength = this.radius * 2;
+        return shipLength * 10 * 1.5;
+    }
+
+    getScrapMagnetRenderOffset(now = Date.now()) {
+        if (!this.scrapMagnetActive || this.isNPC) return { x: 0, y: 0 };
+        const amplitude = 2.5;
+        return {
+            x: Math.sin(now * 0.09) * amplitude,
+            y: Math.sin(now * 0.13 + Math.PI / 3) * amplitude
+        };
+    }
+
     activateBoost() {
         if (!this.ownsUtility('Boost') || this.boostTimer > 0 || this.boostCooldownTimer > 0) return false;
         const speed = Math.hypot(this.vx, this.vy);
@@ -263,7 +277,7 @@ export class Player {
         this.boostTimer = 0;
         this.boostRestoreSpeed = null;
         this.emergencyBrakeActive = false;
-        this.scrapCollectorActive = false;
+        this.scrapMagnetActive = false;
         this.beamHookTarget = null;
         this.beamHookDistance = 0;
         this.phaseShifterTimer = 0;
@@ -1963,7 +1977,7 @@ export class Player {
 
     fire() {
         if (this.isEventHorizon) return null; // Event Horizon Horror does not shoot projectiles
-        if (this.spawnImmunityTimer > 0 || this.isWeaponLocked() || this.scrapCollectorActive) return null; // Cannot shoot during immunity
+        if (this.spawnImmunityTimer > 0 || this.isWeaponLocked() || this.scrapMagnetActive) return null; // Cannot shoot during immunity
 
         if (this.shotTimer <= 0 && this.consumeClipRound()) {
             // Main weapon logic
@@ -2397,6 +2411,8 @@ export class Player {
             ctx.globalAlpha = 0.5 + Math.sin(Date.now() * 0.02) * 0.3;
         }
 
+        const scrapMagnetOffset = this.getScrapMagnetRenderOffset();
+        ctx.translate(scrapMagnetOffset.x, scrapMagnetOffset.y);
         ctx.rotate(this.rotation);
         
         let size = this.radius * 3.6;

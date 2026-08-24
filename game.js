@@ -69,7 +69,7 @@ export const SECTOR_0_WEAPON_CATALOG = Object.freeze([
 export const SECTOR_0_UTILITY_CATALOG = Object.freeze([
     Object.freeze({ id: 'Boost', price: 500, input: 'Spacebar' }),
     Object.freeze({ id: 'Emergency Break', price: 500, input: 'Q' }),
-    Object.freeze({ id: 'Scrap Collector', price: 1000, input: '1' }),
+    Object.freeze({ id: 'Scrap Magnet', price: 1000, input: '1' }),
     Object.freeze({ id: 'Beam Hook', price: 1000, input: '2' }),
     Object.freeze({ id: 'Phase Shifter', price: 5000, input: '3' }),
     Object.freeze({ id: "4d Jacob's Ladder", price: 5000, input: '4' }),
@@ -2428,8 +2428,8 @@ export class Game {
     updateHeldUtilityIntents(player) {
         if (!player || player.isDead || player.isNPC || this.isShopMenuOpen || this.isPauseMenuOpen) return;
         const utilityDigitsAvailable = true;
-        player.scrapCollectorActive = utilityDigitsAvailable
-            && player.ownsUtility('Scrap Collector') && Boolean(this.keys.Digit1);
+        player.scrapMagnetActive = utilityDigitsAvailable
+            && player.ownsUtility('Scrap Magnet') && Boolean(this.keys.Digit1);
         const wantsHook = utilityDigitsAvailable && player.ownsUtility('Beam Hook') && Boolean(this.keys.Digit2);
         const target = player.resolveAimLock(candidate => Game.prototype.isValidAimLockTarget.call(this, player, candidate));
         if (wantsHook && target) {
@@ -2475,10 +2475,9 @@ export class Game {
         return true;
     }
 
-    applyScrapCollector(player, dt = 1 / 60) {
-        if (!player?.scrapCollectorActive) return 0;
-        const range = player.radius * 2 * 10;
-        const forward = { x: Math.sin(player.rotation), y: -Math.cos(player.rotation) };
+    applyScrapMagnet(player, dt = 1 / 60) {
+        if (!player?.scrapMagnetActive) return 0;
+        const range = player.getScrapMagnetRange();
         let affected = 0;
         for (const debris of this.hazards) {
             if (!(debris instanceof SpaceDebris) || debris.isDestroyed
@@ -2488,8 +2487,6 @@ export class Game {
                 : { x: debris.x - player.x, y: debris.y - player.y };
             const distance = Math.hypot(delta.x, delta.y);
             if (distance <= 0 || distance > range) continue;
-            const cosine = (delta.x * forward.x + delta.y * forward.y) / distance;
-            if (cosine < Math.cos(Math.PI / 12)) continue;
             debris.vx += -delta.x / distance * 2400 * dt;
             debris.vy += -delta.y / distance * 2400 * dt;
             affected++;
@@ -3310,7 +3307,7 @@ export class Game {
 
     handleFire(playerId) {
         const player = this.players.find(p => p.id === playerId);
-        if (!player || player.isDead || player.isWeaponLocked() || player.scrapCollectorActive
+        if (!player || player.isDead || player.isWeaponLocked() || player.scrapMagnetActive
             || this.victoryFadeActive || this.victoryScreenActive) return;
         if (this.gameState === GAME_MODE.EXPERIMENTAL && player.isNPC
             && !Game.prototype.hasHumanInExperimentalArea.call(this, player.roomId)) return;
@@ -4104,7 +4101,7 @@ export class Game {
         }
 
         this.players.filter(player => !player.isNPC).forEach(player => {
-            Game.prototype.applyScrapCollector.call(this, player, dt);
+            Game.prototype.applyScrapMagnet.call(this, player, dt);
         });
         simulationAsteroids.forEach(a => {
             a.previousX = a.x;

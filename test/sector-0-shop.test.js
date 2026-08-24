@@ -18,7 +18,7 @@ test('Shop DOM keeps purchase rows and Back but has no duplicate primary selecto
     assert.doesNotMatch(html, /data-shop-select-weapon|shop-selector|shop-capsule/);
     assert.equal((html.match(/shop-row shop-row-three-column/g) || []).length, 7);
     assert.equal((html.match(/data-shop-utility=/g) || []).length, 7);
-    for (const text of ['Boost', 'Emergency Break', 'Scrap Collector', 'Beam Hook', 'Phase Shifter', "4d Jacob's Ladder", '1/100 Black Hole', 'Spacebar']) {
+    for (const text of ['Boost', 'Emergency Break', 'Scrap Magnet', 'Beam Hook', 'Phase Shifter', "4d Jacob's Ladder", '1/100 Black Hole', 'Spacebar']) {
         assert.match(html, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     }
     for (const text of ['Increase Shield', 'Increase Shield Recharge Rate', 'Increase Hull Protection',
@@ -32,7 +32,7 @@ test('Shop DOM keeps purchase rows and Back but has no duplicate primary selecto
 
 test('Utility catalog prices are authoritative and purchases are atomic one-time unlocks', () => {
     assert.deepEqual(SECTOR_0_UTILITY_CATALOG.map(({ id, price, input }) => [id, price, input]), [
-        ['Boost', 500, 'Spacebar'], ['Emergency Break', 500, 'Q'], ['Scrap Collector', 1000, '1'],
+        ['Boost', 500, 'Spacebar'], ['Emergency Break', 500, 'Q'], ['Scrap Magnet', 1000, '1'],
         ['Beam Hook', 1000, '2'], ['Phase Shifter', 5000, '3'], ["4d Jacob's Ladder", 5000, '4'],
         ['1/100 Black Hole', 10000, '5']
     ]);
