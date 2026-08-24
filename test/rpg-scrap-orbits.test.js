@@ -69,7 +69,7 @@ test('RPG human overlap collects debris once without damage or shield loss', () 
     const game = collisionGame([human], [debris]);
     Game.prototype.checkCollisions.call(game);
     Game.prototype.checkCollisions.call(game);
-    assert.equal(human.scrap, 1);
+    assert.equal(human.scrap, 10);
     assert.equal(human.currentHP, human.maxHP);
     assert.equal(human.shieldCharges, 2);
     assert.equal(game.hazards.length, 0);

@@ -79,6 +79,15 @@ export function getSector9BBGAnchorWorldPosition(room, anchor) {
 }
 
 export const EXPERIMENTAL_AREA_TYPE = Object.freeze({ ROOM: 'ROOM', HALLWAY: 'HALLWAY' });
+export const EXPERIMENTAL_AREA_ROLE = Object.freeze({ SHOP: 'SHOP' });
+export const SECTOR_0_SHOP_NAME = 'Sector 0 Shop';
+
+export function isSector0ShopArea(areaOrId, areas = []) {
+    const area = typeof areaOrId === 'string'
+        ? areas.find(candidate => candidate.id === areaOrId)
+        : areaOrId;
+    return area?.role === EXPERIMENTAL_AREA_ROLE.SHOP;
+}
 
 export const EXPERIMENTAL_SHORTCUT_ID = Object.freeze({
     SECTOR_1_TO_4: 'sector-1-to-4',
@@ -414,6 +423,8 @@ export function createExperimentalAreas(roomWidth, roomHeight) {
     };
     const hallwayShell = {
         id: hallwayId,
+        role: EXPERIMENTAL_AREA_ROLE.SHOP,
+        name: SECTOR_0_SHOP_NAME,
         areaType: EXPERIMENTAL_AREA_TYPE.HALLWAY,
         roomNumber: 0,
         origin: point(hallwayBounds.left, hallwayBounds.top),
