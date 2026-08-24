@@ -44,6 +44,15 @@ export const UTILITY_IDS = Object.freeze([
     'Boost', 'Emergency Break', 'Scrap Magnet', 'Beam Hook',
     'Phase Shifter', "4d Jacob's Ladder", '1/100 Black Hole'
 ]);
+export const UTILITY_PRESENTATION = Object.freeze({
+    Boost: Object.freeze({ label: 'Boost', input: 'Space' }),
+    'Emergency Break': Object.freeze({ label: 'Emergency Break', input: 'Q' }),
+    'Scrap Magnet': Object.freeze({ label: 'Scrap Magnet', input: '1' }),
+    'Beam Hook': Object.freeze({ label: 'Beam Hook', input: '2' }),
+    'Phase Shifter': Object.freeze({ label: 'Phase Shifter', input: '3' }),
+    "4d Jacob's Ladder": Object.freeze({ label: "4d Jacob's Ladder", input: '4' }),
+    '1/100 Black Hole': Object.freeze({ label: '1/100 Black Hole', input: '5' })
+});
 
 export function getHPBlockLayout(maxHP, totalWidth = 120, normalGap = 2, minimumBlockWidth = 0.5) {
     const blockCount = Math.max(1, Math.floor(Number(maxHP) || 1));

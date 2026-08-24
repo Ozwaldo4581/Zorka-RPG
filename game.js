@@ -947,7 +947,7 @@ export class Game {
                 this.mouse.x = point.x;
                 this.mouse.y = point.y;
                 const shopWeapon = this.isShopMenuOpen
-                    ? this.hud.getPrimaryWeaponAt(point.x, point.y, this.players, this.gameState === 'PVP')
+                    ? this.hud.getShopPrimaryWeaponAt(point.x, point.y, this.players)
                     : null;
                 const selection = this.isInGameplayState() && !this.isPauseMenuOpen
                     ? this.hud.getLevelUpgradeAt(this.mouse.x, this.mouse.y, this.players, this.gameState === 'PVP')
@@ -1681,7 +1681,7 @@ export class Game {
         if (event.pointerType !== 'touch') return false;
         const point = this.getDesignPoint(event);
         if (this.isShopMenuOpen) {
-            const shopWeapon = this.hud.getPrimaryWeaponAt(point.x, point.y, this.players, this.gameState === 'PVP');
+            const shopWeapon = this.hud.getShopPrimaryWeaponAt(point.x, point.y, this.players);
             return shopWeapon
                 ? Game.prototype.handleSector0ShopSelectionIntent.call(this, shopWeapon.weaponId)
                 : false;
