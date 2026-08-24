@@ -30,7 +30,11 @@ test('Shop DOM keeps purchase rows and Back but has no duplicate primary selecto
     const modificationMarkup = html.match(/<div id="ship-modification-menu"[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/)?.[0] || '';
     assert.deepEqual([...modificationMarkup.matchAll(/data-ship-modification="([^"]+)"/g)].map(match => match[1]),
         SHIP_MODIFICATION_IDS);
-    assert.doesNotMatch(modificationMarkup, /shop-upgrade" disabled/);
+    const modificationButtons = [...modificationMarkup.matchAll(/<button\b([^>]*)data-ship-modification="([^"]+)"([^>]*)>/g)];
+    assert.equal(modificationButtons.length, SHIP_MODIFICATION_IDS.length);
+    for (const [, beforeId, upgradeId, afterId] of modificationButtons) {
+        assert.doesNotMatch(`${beforeId}${afterId}`, /\bdisabled\b/, `${upgradeId} must be runtime-controlled`);
+    }
     assert.ok(modificationMarkup.indexOf('data-ship-modification="projectile"')
         < modificationMarkup.indexOf('data-ship-modification="fireRate"'));
     assert.equal((html.match(/data-stub-shop-back/g) || []).length, 3);
@@ -65,6 +69,15 @@ test('Modify Ship purchases use one flat price and enforce only the central caps
             assert.deepEqual([player.scrap, player.shipUpgrades[upgradeId]], [before, cap]);
         }
     }
+
+    const player = new Player(0, 0, 1);
+    player.roomId = modificationArea.id;
+    player.scrap = SHIP_MODIFICATION_PRICE - 1;
+    const game = { ...shopGame(player), activeSector0Shop: 'SHIP_MODIFICATION' };
+    const before = player.getPersistentProgressionSnapshot();
+    assert.equal(Game.prototype.handleShipModificationIntent.call(game, 'shield'), false);
+    assert.equal(Game.prototype.handleShipModificationIntent.call(game, 'not-an-upgrade'), false);
+    assert.deepEqual(player.getPersistentProgressionSnapshot(), before);
 });
 
 test('Modify Ship Player helpers reach requested scaling and persist their source counts', () => {
