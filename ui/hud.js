@@ -371,16 +371,13 @@ export class HUD {
 
             const primaryAmmo = player.getPrimaryAmmoState?.();
             const missileAmmo = player.getMissileAmmoState?.();
-            const ammoState = i === 4 && missileAmmo?.capacity > 0
+            const ammoState = i === 4 && player.getWeaponPurchaseTier?.('Missile') > 0
                 ? missileAmmo
-                : (i === 0 || i === 1) && primaryAmmo?.family === 'Ballistic'
+                : slot.name === player.equippedPrimaryGun && primaryAmmo
                     ? primaryAmmo
-                    : i === 2 && primaryAmmo?.family === 'Laser'
-                        ? primaryAmmo
-                        : i === 3 && primaryAmmo?.family === 'Orb' ? primaryAmmo : null;
+                    : null;
             if (ammoState) this.drawAmmoMeter(ctx, ammoState, x + slotWidth / 2, y - 12, slotWidth - 14);
 
-            const slotNumber = i + 1;
             const isCurrent = player.equippedPrimaryGun === slot.name;
             const isSelectable = player.ownsWeapon?.(slot.name) || false;
 
@@ -405,12 +402,18 @@ export class HUD {
             ctx.font = '9px Orbitron';
             ctx.fillStyle = !isSelectable ? '#777' : (isCurrent ? '#fff' : '#666');
             ctx.textAlign = 'center';
-            ctx.fillText(`${i+1} ${slot.name}`, x + slotWidth / 2, y + 22);
+            ctx.fillText(slot.name, x + slotWidth / 2, y + 22);
             
             ctx.font = '7px Orbitron';
             ctx.fillStyle = !isSelectable ? '#555' : (isCurrent ? player.color : '#444');
             ctx.fillText(slot.type, x + slotWidth / 2, y + 10);
         });
+
+        // Ballistic has no legacy capsule slot, so its real Player-owned clip is
+        // rendered once above the row when it is the equipped primary.
+        if (player.equippedPrimaryGun === 'Ballistic' || player.equippedPrimaryGun === 'Ghost') {
+            this.drawAmmoMeter(ctx, player.getPrimaryAmmoState(), centerX, startY - 12, slotWidth - 14);
+        }
 
         // Static capsule-selection helper appears only while a capsule bonus is available.
         const capsules = player.powerUpCapsules;

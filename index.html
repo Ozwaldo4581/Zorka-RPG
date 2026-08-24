@@ -153,6 +153,14 @@
       .shop-price { color: #fff; font: bold 1.15rem Orbitron, sans-serif; text-align: right; }
       .shop-upgrade { width: 100%; margin: 0; padding: .7rem 1rem; font-size: 1rem; }
       .shop-upgrade:disabled { border-color: #555; color: #777; box-shadow: none; }
+      .shop-selector { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; margin-top: 22px; }
+      .shop-capsule { width: auto; min-width: 0; padding: .65rem .25rem; margin: 0; font-size: .7rem; }
+      .shop-capsule.selected { border-width: 3px; background: rgba(0,255,255,.2); box-shadow: 0 0 16px #00ffff; }
+      .shop-select-instruction { position: absolute; bottom: 36px; left: 0; right: 0; text-align: center; color: #00ffff; font: bold 2.5rem Orbitron, sans-serif; animation: select-weapon-cycle 13s linear infinite; }
+      @keyframes select-weapon-cycle {
+        0%, 7.69%, 15.38%, 23.07%, 100% { opacity: 1; }
+        3.84%, 11.53%, 19.22% { opacity: 0; }
+      }
       #main-menu {
         --notebook-height: min(110vh, 140vw);
 
@@ -939,8 +947,17 @@
           <div class="shop-row"><span class="shop-price">1,000</span><button class="menu-button shop-upgrade" data-shop-weapon="Orb">Orb</button></div>
           <div class="shop-row"><span class="shop-price">5,000</span><button class="menu-button shop-upgrade" data-shop-weapon="Ghost">Ghost</button></div>
         </div>
+        <div class="shop-selector" aria-label="Primary weapon selection">
+          <button class="menu-button shop-capsule" data-shop-select-weapon="Ballistic">Ballistic</button>
+          <button class="menu-button shop-capsule" data-shop-select-weapon="Antigun">Antigun</button>
+          <button class="menu-button shop-capsule" data-shop-select-weapon="Doublegun">Doublegun</button>
+          <button class="menu-button shop-capsule" data-shop-select-weapon="Laser">Laser</button>
+          <button class="menu-button shop-capsule" data-shop-select-weapon="Orb">Orb</button>
+          <button class="menu-button shop-capsule" data-shop-select-weapon="Ghost">Ghost</button>
+        </div>
         <div style="text-align:center"><button class="menu-button" id="btn-sector-0-shop-back">BACK</button></div>
       </div>
+      <div class="shop-select-instruction">Select Weapon</div>
     </div>
 
     <!-- Floating in-game pause menu: overlays gameplay without pausing the simulation -->
