@@ -2787,7 +2787,15 @@ export class Game {
 
     resetExperimentalWorldLoop(player) {
         if (this.gameState !== GAME_MODE.EXPERIMENTAL || !player || player.isNPC) return false;
+        const encounterLevels = new Map([...(this.experimentalEncounterStates || [])]
+            .map(([roomId, encounter]) => [roomId, encounter.npcLevel]));
         Game.prototype.initializeExperimentalWorldState.call(this);
+        for (const [roomId, npcLevel] of encounterLevels) {
+            const encounter = Game.prototype.getExperimentalEncounterState.call(this, roomId);
+            if (!encounter) continue;
+            encounter.npcLevel = Math.max(1, Math.floor(Number(npcLevel) || 1));
+            Game.prototype.reconcileExperimentalOrdinaryNPCPopulation.call(this, roomId);
+        }
         player.experimentalWorldResetPending = false;
         return true;
     }
