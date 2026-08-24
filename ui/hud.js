@@ -37,7 +37,7 @@ export class HUD {
             this.drawSpeedMeter(ctx, players[0], 1920 / 2, 980, 6);
         }
 
-        this.drawShopWeaponInstruction(ctx, Boolean(minimapContext?.shopMenuOpen), 1920 / 2, 980);
+        this.drawShopWeaponInstruction(ctx, Boolean(minimapContext?.weaponShopOpen), 1920 / 2, 980);
     }
 
     drawShopPrompts(ctx, currentArea, shopEligible, shopMenuOpen) {

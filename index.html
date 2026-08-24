@@ -141,16 +141,18 @@
         background: rgba(0, 255, 255, 0.2);
         color: #00ffff;
       }
-      #sector-0-shop-menu {
+      [data-sector-0-shop-menu] {
         position: absolute; inset: 0; z-index: 25; display: flex;
         align-items: center; justify-content: center; pointer-events: none;
         background: linear-gradient(to bottom, rgba(0, 0, 0, 0.86) 0 84%, rgba(0, 0, 0, 0.35) 94%, transparent 100%);
       }
-      #sector-0-shop-menu.hidden { display: none; }
+      [data-sector-0-shop-menu].hidden { display: none; }
       .shop-panel { width: 620px; padding: 32px; border: 2px solid #00ffff; background: #050505; box-shadow: 0 0 30px rgba(0,255,255,.45); pointer-events: auto; }
       .shop-panel h2, .shop-balance { text-align: center; color: #00ffff; letter-spacing: .15rem; }
       .shop-grid { display: grid; gap: 10px; margin: 24px 0; }
       .shop-row { display: grid; grid-template-columns: 150px 1fr; gap: 16px; align-items: center; }
+      .shop-row-three-column { grid-template-columns: 110px 1fr 110px; }
+      .shop-stub-value { color: #00ffff; font: bold 1rem Orbitron, sans-serif; text-align: center; }
       .shop-price { color: #fff; font: bold 1.15rem Orbitron, sans-serif; text-align: right; }
       .shop-upgrade { width: 100%; margin: 0; padding: .7rem 1rem; font-size: 1rem; }
       .shop-upgrade:disabled { border-color: #555; color: #777; box-shadow: none; }
@@ -928,7 +930,7 @@
       </div>
     </div>
 
-    <div id="sector-0-shop-menu" class="hidden" role="dialog" aria-modal="true" aria-labelledby="sector-0-shop-title">
+    <div id="sector-0-shop-menu" class="hidden" data-sector-0-shop-menu role="dialog" aria-modal="true" aria-labelledby="sector-0-shop-title">
       <div class="shop-panel">
         <h2 id="sector-0-shop-title">Sector 0 Shop</h2>
         <div id="sector-0-shop-balance" class="shop-balance">Scrap - 0</div>
@@ -941,6 +943,38 @@
           <div class="shop-row"><span class="shop-price">5,000</span><button class="menu-button shop-upgrade" data-shop-weapon="Ghost">Ghost</button></div>
         </div>
         <div style="text-align:center"><button class="menu-button" id="btn-sector-0-shop-back">BACK</button></div>
+      </div>
+    </div>
+
+    <div id="utility-shop-menu" class="hidden" data-sector-0-shop-menu role="dialog" aria-modal="true" aria-labelledby="utility-shop-title">
+      <div class="shop-panel">
+        <h2 id="utility-shop-title">Purchase Utility</h2>
+        <div class="shop-grid">
+          <div class="shop-row shop-row-three-column"><span class="shop-price">500</span><button class="menu-button shop-upgrade" disabled>Boost</button><span class="shop-stub-value">Spacebar</span></div>
+          <div class="shop-row shop-row-three-column"><span class="shop-price">500</span><button class="menu-button shop-upgrade" disabled>Emergency Break</button><span class="shop-stub-value">Q</span></div>
+          <div class="shop-row shop-row-three-column"><span class="shop-price">1000</span><button class="menu-button shop-upgrade" disabled>Scrap Collector</button><span class="shop-stub-value">1</span></div>
+          <div class="shop-row shop-row-three-column"><span class="shop-price">1000</span><button class="menu-button shop-upgrade" disabled>Beam Hook</button><span class="shop-stub-value">2</span></div>
+          <div class="shop-row shop-row-three-column"><span class="shop-price">5000</span><button class="menu-button shop-upgrade" disabled>Phase Shifter</button><span class="shop-stub-value">3</span></div>
+          <div class="shop-row shop-row-three-column"><span class="shop-price">5000</span><button class="menu-button shop-upgrade" disabled>4D Jacob's Latter</button><span class="shop-stub-value">4</span></div>
+          <div class="shop-row shop-row-three-column"><span class="shop-price">10000</span><button class="menu-button shop-upgrade" disabled>1/100 Black Hole</button><span class="shop-stub-value">5</span></div>
+        </div>
+        <div style="text-align:center"><button class="menu-button" data-stub-shop-back>BACK</button></div>
+      </div>
+    </div>
+
+    <div id="ship-modification-menu" class="hidden" data-sector-0-shop-menu role="dialog" aria-modal="true" aria-labelledby="ship-modification-title">
+      <div class="shop-panel">
+        <h2 id="ship-modification-title">Modify Ship</h2>
+        <div class="shop-grid">
+          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" disabled>Increase Shield</button></div>
+          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" disabled>Increase Shield Recharge Rate</button></div>
+          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" disabled>Increase Hull Protection</button></div>
+          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" disabled>Increase Hull Recovery Rate</button></div>
+          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" disabled>Increase Fire Rate</button></div>
+          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" disabled>Increase Reload Speed</button></div>
+          <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" disabled>Increase Acceleration</button></div>
+        </div>
+        <div style="text-align:center"><button class="menu-button" data-stub-shop-back>BACK</button></div>
       </div>
     </div>
 

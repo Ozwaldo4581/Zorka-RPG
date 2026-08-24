@@ -16,13 +16,23 @@ test('Shop DOM keeps purchase rows and Back but has no duplicate primary selecto
     assert.equal((html.match(/data-shop-weapon=/g) || []).length, 6);
     assert.match(html, /id="btn-sector-0-shop-back"/);
     assert.doesNotMatch(html, /data-shop-select-weapon|shop-selector|shop-capsule/);
+    assert.equal((html.match(/shop-row shop-row-three-column/g) || []).length, 7);
+    for (const text of ['Boost', 'Emergency Break', 'Scrap Collector', 'Beam Hook', 'Phase Shifter', "4D Jacob's Latter", '1/100 Black Hole', 'Spacebar']) {
+        assert.match(html, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    }
+    for (const text of ['Increase Shield', 'Increase Shield Recharge Rate', 'Increase Hull Protection',
+        'Increase Hull Recovery Rate', 'Increase Fire Rate', 'Increase Reload Speed', 'Increase Acceleration']) {
+        assert.match(html, new RegExp(text));
+    }
+    assert.equal((html.match(/data-stub-shop-back/g) || []).length, 2);
 });
 
-test('Sector 0 exposes three semantic terminal areas and only Weapons accepts Shop entry', () => {
+test('Sector 0 exposes four semantic interaction areas while Weapons keeps purchase eligibility', () => {
     assert.deepEqual(areas.filter(area => area.roomNumber === 0).map(area => [area.role, area.displayText, area.interaction]), [
         [EXPERIMENTAL_AREA_ROLE.WEAPONS_SHOP, 'Purchase Weapons', 'WEAPONS_SHOP'],
-        [EXPERIMENTAL_AREA_ROLE.UTILITY_SHOP, 'Purchase Utility', null],
-        [EXPERIMENTAL_AREA_ROLE.SHIP_MODIFICATION, 'Modify Ship', null]
+        [EXPERIMENTAL_AREA_ROLE.UTILITY_SHOP, 'Purchase Utility', 'UTILITY_SHOP'],
+        [EXPERIMENTAL_AREA_ROLE.SHIP_MODIFICATION, 'Modify Ship', 'SHIP_MODIFICATION'],
+        [EXPERIMENTAL_AREA_ROLE.SPACE_BAR, 'The Space Bar', 'SPACE_BAR_STUB']
     ]);
     const player = new Player(0, 0, 1);
     const game = shopGame(player);
@@ -37,6 +47,23 @@ test('Sector 0 exposes three semantic terminal areas and only Weapons accepts Sh
     game.gameState = GAME_MODE.SOLO;
     assert.equal(Game.prototype.isHumanInSector0Shop.call(game), false);
     assert.ok(room.connectedAreaIds.includes(shop.id));
+});
+
+test('Space dispatch derives from area membership and keeps The Space Bar a no-op stub', () => {
+    const player = new Player(0, 0, 1);
+    const game = { ...shopGame(player), isShopMenuOpen: false, isPauseMenuOpen: false, activeModal: null, optionsOpenedFromPause: false };
+    for (const role of [EXPERIMENTAL_AREA_ROLE.WEAPONS_SHOP, EXPERIMENTAL_AREA_ROLE.UTILITY_SHOP,
+        EXPERIMENTAL_AREA_ROLE.SHIP_MODIFICATION, EXPERIMENTAL_AREA_ROLE.SPACE_BAR]) {
+        const area = areas.find(candidate => candidate.role === role);
+        player.roomId = area.id;
+        assert.equal(Game.prototype.getHumanSector0InteractionArea.call(game), area);
+    }
+    const spaceBar = areas.find(area => area.role === EXPERIMENTAL_AREA_ROLE.SPACE_BAR);
+    player.roomId = spaceBar.id;
+    const scrap = player.scrap;
+    assert.equal(Game.prototype.handleSector0Interaction.call(game), true);
+    assert.equal(game.isShopMenuOpen, false);
+    assert.equal(player.scrap, scrap);
 });
 
 test('catalog order, fixed prices, and mathematical Missile prices are authoritative', () => {
