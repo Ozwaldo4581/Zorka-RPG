@@ -40,6 +40,10 @@ const HUMAN_STARTING_HP_BONUS = 5;
 export const DAMAGE_PULSE_DURATION = 0.35;
 export const SHOP_WEAPON_IDS = Object.freeze(['Antigun', 'Doublegun', 'Missile', 'Laser', 'Orb', 'Ghost']);
 export const PRIMARY_WEAPON_IDS = Object.freeze(['Ballistic', 'Antigun', 'Doublegun', 'Laser', 'Orb', 'Ghost']);
+export const UTILITY_IDS = Object.freeze([
+    'Boost', 'Emergency Break', 'Scrap Collector', 'Beam Hook',
+    'Phase Shifter', "4d Jacob's Ladder", '1/100 Black Hole'
+]);
 
 export function getHPBlockLayout(maxHP, totalWidth = 120, normalGap = 2, minimumBlockWidth = 0.5) {
     const blockCount = Math.max(1, Math.floor(Number(maxHP) || 1));
@@ -82,6 +86,20 @@ export class Player {
         // Session-local RPG resource. Game owns collection outcomes; Player owns the count.
         this.scrap = 0;
         this.weaponPurchaseTiers = Object.seal(Object.fromEntries(SHOP_WEAPON_IDS.map(id => [id, 0])));
+        this.purchasedUtilities = Object.seal(Object.fromEntries(UTILITY_IDS.map(id => [id, false])));
+        this.utilityInputLatches = Object.create(null);
+        this.boostTimer = 0;
+        this.boostCooldownTimer = 0;
+        this.boostRestoreSpeed = null;
+        this.emergencyBrakeActive = false;
+        this.scrapCollectorActive = false;
+        this.beamHookTarget = null;
+        this.beamHookDistance = 0;
+        this.beamHookTargetX = 0;
+        this.beamHookTargetY = 0;
+        this.phaseShifterTimer = 0;
+        this.phaseShifterCooldownTimer = 0;
+        this.blackHoleCooldownTimer = 0;
         this.equippedPrimaryGun = 'Ballistic';
         this.maxPowerUpSlots = 5;
         this.activeGun = 'Normal'; // Ballistic forms: Normal/Base Gun, Antigun, Double
@@ -174,6 +192,79 @@ export class Player {
         const gained = Math.max(0, Math.floor(Number(amount) || 0));
         this.scrap += gained;
         return gained;
+    }
+
+    ownsUtility(utilityId) {
+        return this.purchasedUtilities?.[utilityId] === true;
+    }
+
+    purchaseUtility(utilityId) {
+        if (!UTILITY_IDS.includes(utilityId) || this.ownsUtility(utilityId)) return false;
+        this.purchasedUtilities[utilityId] = true;
+        return true;
+    }
+
+    activateBoost() {
+        if (!this.ownsUtility('Boost') || this.boostTimer > 0 || this.boostCooldownTimer > 0) return false;
+        const speed = Math.hypot(this.vx, this.vy);
+        this.boostRestoreSpeed = speed;
+        const direction = speed > 0 ? { x: this.vx / speed, y: this.vy / speed }
+            : { x: Math.sin(this.rotation), y: -Math.cos(this.rotation) };
+        this.vx = direction.x * this.getNormalShipSpeedCap() * 3;
+        this.vy = direction.y * this.getNormalShipSpeedCap() * 3;
+        this.boostTimer = 1;
+        this.boostCooldownTimer = 12;
+        return true;
+    }
+
+    activateEmergencyBrake() {
+        if (!this.ownsUtility('Emergency Break')) return false;
+        this.emergencyBrakeActive = Math.hypot(this.vx, this.vy) > 0;
+        return true;
+    }
+
+    activatePhaseShifter() {
+        if (!this.ownsUtility('Phase Shifter') || this.phaseShifterTimer > 0 || this.phaseShifterCooldownTimer > 0) return false;
+        this.phaseShifterTimer = 6;
+        this.phaseShifterCooldownTimer = 24;
+        this.clearAimLock();
+        return true;
+    }
+
+    isTargetable() {
+        return !this.isDead && !this.isEliminated && this.phaseShifterTimer <= 0;
+    }
+
+    isIntangible() {
+        return this.phaseShifterTimer > 0;
+    }
+
+    updateUtilityTimers(dt) {
+        const tick = name => { this[name] = Math.max(0, this[name] - dt); };
+        const wasBoosting = this.boostTimer > 0;
+        tick('boostTimer');
+        tick('boostCooldownTimer');
+        tick('phaseShifterTimer');
+        tick('phaseShifterCooldownTimer');
+        tick('blackHoleCooldownTimer');
+        if (wasBoosting && this.boostTimer === 0 && this.boostRestoreSpeed !== null) {
+            const speed = Math.hypot(this.vx, this.vy);
+            if (speed > 0) {
+                this.vx = this.vx / speed * this.boostRestoreSpeed;
+                this.vy = this.vy / speed * this.boostRestoreSpeed;
+            }
+            this.boostRestoreSpeed = null;
+        }
+    }
+
+    resetTemporaryUtilityState() {
+        this.boostTimer = 0;
+        this.boostRestoreSpeed = null;
+        this.emergencyBrakeActive = false;
+        this.scrapCollectorActive = false;
+        this.beamHookTarget = null;
+        this.beamHookDistance = 0;
+        this.phaseShifterTimer = 0;
     }
 
     configureWispLifetime(random = Math.random) {
@@ -442,6 +533,7 @@ export class Player {
         this.bonusSpeed = 0;
         this.restoreShieldCharges(this.maxShieldCharges);
         this.restorePurchasedWeaponLoadout();
+        this.resetTemporaryUtilityState();
     }
 
     startExperimentalRespawnPhase(x = this.x, y = this.y) {
@@ -469,7 +561,11 @@ export class Player {
     }
 
     isDamageImmune() {
-        return this.isExperimentalRespawnPhaseActive() || this.spawnImmunityTimer > 0;
+        return this.isExperimentalRespawnPhaseActive() || this.spawnImmunityTimer > 0 || this.isIntangible();
+    }
+
+    applyStandardRespawnProtection() {
+        this.spawnImmunityTimer = SPAWN_IMMUNITY_DURATION;
     }
 
     getExperimentalRespawnTintProgress() {
@@ -793,6 +889,7 @@ export class Player {
         this.updateShieldRecharge(dt);
         this.updateHPRecharge(dt);
         this.updateWeaponTimers(dt);
+        this.updateUtilityTimers(dt);
 
         const translationLocked = this.isTranslationLocked();
         const respawnAnchorX = this.experimentalRespawnAnchorX;
@@ -904,6 +1001,7 @@ export class Player {
                 const inputX = Number(Boolean(keys['KeyD'])) - Number(Boolean(keys['KeyA']));
                 const inputY = Number(Boolean(keys['KeyS'])) - Number(Boolean(keys['KeyW']));
                 if (inputX !== 0 || inputY !== 0) {
+                    this.emergencyBrakeActive = false;
                     const force = this.getDirectionalThrust(inputX, inputY);
                     fx += force.x;
                     fy += force.y;
@@ -968,11 +1066,24 @@ export class Player {
             this.vy = 0;
             this.isThrusting = false;
         } else {
+            if (this.emergencyBrakeActive) {
+                const speed = Math.hypot(this.vx, this.vy);
+                const acceleration = this.getEffectiveThrust();
+                const reduction = acceleration * dt;
+                if (speed <= reduction) {
+                    this.vx = 0;
+                    this.vy = 0;
+                    this.emergencyBrakeActive = false;
+                } else {
+                    fx = -this.vx / speed * acceleration;
+                    fy = -this.vy / speed * acceleration;
+                }
+            }
             updateNewtonian(this, dt, { x: fx, y: fy }, worldRules);
         }
         
         // Speed cap
-        let maxSpeed = this.getNormalShipSpeedCap();
+        let maxSpeed = this.boostTimer > 0 ? this.getNormalShipSpeedCap() * 3 : this.getNormalShipSpeedCap();
         if (this.isEventHorizon) {
             maxSpeed += this.bonusSpeed;
         }
@@ -1295,7 +1406,8 @@ export class Player {
                 return;
             }
         }
-        if (worldRules?.usesRooms && this.npcTarget?.roomId !== this.roomId) this.npcTarget = null;
+        if ((worldRules?.usesRooms && this.npcTarget?.roomId !== this.roomId)
+            || this.npcTarget?.isTargetable?.() === false) this.npcTarget = null;
         if (this.isFixedPositionNPC) {
             this.vx = 0;
             this.vy = 0;
@@ -1343,7 +1455,7 @@ export class Player {
             
             // Priority 1: Players
             others.forEach(other => {
-                if (other === this || other.isDead || other.isEliminated) return;
+                if (other === this || other.isDead || other.isEliminated || other.isTargetable?.() === false) return;
                 if (isTargetCandidate && !isTargetCandidate(other)) return;
                 if (this.isSector9BBGEncounterNPC && other.isNPC) return;
                 if (!this.isSector9BBGEncounterNPC && other.isSector9BBGEncounterNPC) return;
@@ -1839,7 +1951,7 @@ export class Player {
 
     fire() {
         if (this.isEventHorizon) return null; // Event Horizon Horror does not shoot projectiles
-        if (this.spawnImmunityTimer > 0 || this.isWeaponLocked()) return null; // Cannot shoot during immunity
+        if (this.spawnImmunityTimer > 0 || this.isWeaponLocked() || this.scrapCollectorActive) return null; // Cannot shoot during immunity
 
         if (this.shotTimer <= 0 && this.consumeClipRound()) {
             // Main weapon logic

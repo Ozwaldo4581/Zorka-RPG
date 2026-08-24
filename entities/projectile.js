@@ -32,6 +32,8 @@ export class Projectile {
         this.tentaclePhase = 'OUT'; // OUT or IN
         this.missileTarget = null;
         this.aoeRadius = 0;
+        this.isUtilityEventHorizon = false;
+        this.visibleWorldBounds = null;
     }
 
     update(dt, asteroids = [], players = [], hazards = [], projectiles = [], worldRules = null) {
@@ -74,6 +76,12 @@ export class Projectile {
 
         if (!this.isMissile && !this.isTentacle) {
             this.lifeSpan -= dt;
+        }
+        if (this.isUtilityEventHorizon && this.visibleWorldBounds) {
+            const bounds = this.visibleWorldBounds;
+            if (this.x < bounds.left || this.x > bounds.right || this.y < bounds.top || this.y > bounds.bottom) {
+                this.lifeSpan = -1;
+            }
         }
     }
 
@@ -156,7 +164,7 @@ export class Projectile {
         const isActiveTarget = target => {
             if (!target || target === this || target === this.owner) return false;
             if (!isInProjectileRoom(target)) return false;
-            if (players.includes(target)) return !target.isDead && !target.isEliminated;
+            if (players.includes(target)) return target.isTargetable?.() !== false && !target.isDead && !target.isEliminated;
             if (asteroids.includes(target)) return !target.isDestroyed;
             if (hazards.includes(target)) return !target.isDestroyed;
             if (projectiles.includes(target)) {
@@ -179,7 +187,8 @@ export class Projectile {
                 this.missileTarget = null;
 
                 players.forEach(player => {
-                    if (player === this.owner || player.isDead || player.isEliminated || !isInProjectileRoom(player)) return;
+                    if (player === this.owner || player.isDead || player.isEliminated
+                        || player.isTargetable?.() === false || !isInProjectileRoom(player)) return;
                     const distance = getDistance(player);
                     if (distance < minDist && distance < HOMING_RANGE) {
                         minDist = distance;
@@ -230,7 +239,11 @@ export class Projectile {
         ctx.save();
         camera.apply(ctx, this.x, this.y);
         
-        if (this.isTentacle && this.owner) {
+        if (this.isUtilityEventHorizon) {
+            const size = this.radius * 8;
+            ctx.rotate(this.rotation);
+            ctx.drawImage(assets.eventHorizon, -size / 2, -size / 2, size, size);
+        } else if (this.isTentacle && this.owner) {
             // Do not draw tentacle if owner is no longer Dimension X
             if (!this.owner.isDimensionX || this.owner.isDead) {
                 ctx.restore();

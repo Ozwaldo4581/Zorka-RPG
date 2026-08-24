@@ -60,6 +60,15 @@ export const SECTOR_0_WEAPON_CATALOG = Object.freeze([
     Object.freeze({ id: 'Orb', label: 'Orb', prices: Object.freeze([1000, 2500, 4500]) }),
     Object.freeze({ id: 'Ghost', label: 'Ghost', prices: Object.freeze([5000, 10000, 15000]) })
 ]);
+export const SECTOR_0_UTILITY_CATALOG = Object.freeze([
+    Object.freeze({ id: 'Boost', price: 500, input: 'Spacebar' }),
+    Object.freeze({ id: 'Emergency Break', price: 500, input: 'Q' }),
+    Object.freeze({ id: 'Scrap Collector', price: 1000, input: '1' }),
+    Object.freeze({ id: 'Beam Hook', price: 1000, input: '2' }),
+    Object.freeze({ id: 'Phase Shifter', price: 5000, input: '3' }),
+    Object.freeze({ id: "4d Jacob's Ladder", price: 5000, input: '4' }),
+    Object.freeze({ id: '1/100 Black Hole', price: 10000, input: '5' })
+]);
 // Compatibility export retained for integrations that import the old name.
 export const SECTOR_0_SHOP_PRICES = SECTOR_0_WEAPON_CATALOG;
 
@@ -883,6 +892,9 @@ export class Game {
                 e.preventDefault();
                 return;
             }
+            if (!e.repeat && Game.prototype.handleUtilityKeyDown.call(this, e.code)) {
+                e.preventDefault();
+            }
             if (e.code === 'Escape' && this.activeModal === 'quit') {
                 this.closeQuitConfirmation();
                 return;
@@ -1314,6 +1326,9 @@ export class Game {
         document.querySelectorAll('[data-shop-weapon]').forEach(button => button.addEventListener('click', () => {
             Game.prototype.handleSector0ShopWeaponIntent.call(this, button.dataset.shopWeapon);
         }));
+        document.querySelectorAll('[data-shop-utility]').forEach(button => button.addEventListener('click', () => {
+            Game.prototype.handleUtilityShopIntent.call(this, button.dataset.shopUtility);
+        }));
         document.getElementById('btn-buy-round')?.addEventListener('click', event => {
             event.stopPropagation();
             Game.prototype.handleSpaceBarRoundIntent.call(this);
@@ -1410,6 +1425,7 @@ export class Game {
         const menu = document.getElementById(menuId);
         menu?.classList.remove('hidden');
         if (shopType === 'WEAPONS_SHOP') Game.prototype.refreshSector0ShopMenu.call(this);
+        if (shopType === 'UTILITY_SHOP') Game.prototype.refreshUtilityShopMenu.call(this);
         if (shopType === 'SPACE_BAR') Game.prototype.refreshSpaceBarMenu.call(this);
         this.setInitialMenuFocus?.(menu);
         return true;
@@ -1468,6 +1484,35 @@ export class Game {
             button.textContent = offer?.action === 'capped' ? 'CAPPED' : offer?.product.label || button.dataset.shopWeapon;
             button.disabled = !offer || offer.action === 'capped'
                 || (offer.action === 'purchase' && player.scrap < offer.price);
+        });
+    }
+
+    getUtilityShopOffer(player, utilityId) {
+        const product = SECTOR_0_UTILITY_CATALOG.find(entry => entry.id === utilityId);
+        if (!product || !player) return null;
+        return { product, price: product.price, owned: player.ownsUtility(utilityId) };
+    }
+
+    handleUtilityShopIntent(utilityId) {
+        const player = Game.prototype.getHumanPlayer.call(this);
+        const area = Game.prototype.getHumanSector0InteractionArea.call(this);
+        if (!this.isShopMenuOpen || this.activeSector0Shop !== 'UTILITY_SHOP'
+            || area?.interaction !== 'UTILITY_SHOP') return false;
+        const offer = Game.prototype.getUtilityShopOffer.call(this, player, utilityId);
+        if (!offer || offer.owned || player.scrap < offer.price || !player.purchaseUtility(utilityId)) return false;
+        player.scrap -= offer.price;
+        Game.prototype.refreshUtilityShopMenu.call(this);
+        return true;
+    }
+
+    refreshUtilityShopMenu() {
+        if (typeof document === 'undefined') return;
+        const player = Game.prototype.getHumanPlayer.call(this);
+        const balance = document.getElementById('utility-shop-balance');
+        if (balance) balance.textContent = `Scrap - ${player?.scrap || 0}`;
+        document.querySelectorAll?.('[data-shop-utility]').forEach(button => {
+            const offer = Game.prototype.getUtilityShopOffer.call(this, player, button.dataset.shopUtility);
+            button.disabled = !offer || offer.owned || player.scrap < offer.price;
         });
     }
 
@@ -2278,7 +2323,8 @@ export class Game {
     }
 
     isHostileTarget(attacker, candidate) {
-        if (!attacker || !candidate || attacker === candidate || candidate.isDead || candidate.isEliminated) {
+        if (!attacker || !candidate || attacker === candidate || candidate.isDead || candidate.isEliminated
+            || candidate.isTargetable?.() === false) {
             return false;
         }
 
@@ -2329,6 +2375,125 @@ export class Game {
         const player = this.players.find(candidate => !candidate.isNPC && candidate.controlMode === 'KEYBOARD');
         if (!player || player.isDead || player.pendingLevelUps <= 0) return false;
         player.applyLevelUpgrade(choice);
+        return true;
+    }
+
+    handleUtilityKeyDown(code) {
+        if (!this.isInGameplayState() || this.isPauseMenuOpen || this.isShopMenuOpen
+            || this.activeModal || this.optionsOpenedFromPause) return false;
+        const player = Game.prototype.getHumanPlayer.call(this);
+        if (!player || player.isDead || player.isNPC) return false;
+        if (code === 'Space') return player.activateBoost();
+        if (code === 'KeyQ') return player.activateEmergencyBrake();
+        if (code === 'Digit3') return player.activatePhaseShifter();
+        if (code === 'Digit4' && player.ownsUtility("4d Jacob's Ladder")) {
+            const spawn = this.gameState === GAME_MODE.EXPERIMENTAL
+                ? Game.prototype.findExperimentalSpawn.call(this, player.radius,
+                    this.players.filter(candidate => candidate !== player), player.roomId)
+                : Game.prototype.findSafePlayerSpawn.call(this);
+            if (!spawn) return false;
+            player.x = spawn.x;
+            player.y = spawn.y;
+            player.previousX = spawn.x;
+            player.previousY = spawn.y;
+            player.applyStandardRespawnProtection();
+            return true;
+        }
+        if (code === 'Digit5') return Game.prototype.fireUtilityBlackHole.call(this, player);
+        return false;
+    }
+
+    updateHeldUtilityIntents(player) {
+        if (!player || player.isDead || player.isNPC || this.isShopMenuOpen || this.isPauseMenuOpen) return;
+        const utilityDigitsAvailable = player.pendingLevelUps <= 0;
+        player.scrapCollectorActive = utilityDigitsAvailable
+            && player.ownsUtility('Scrap Collector') && Boolean(this.keys.Digit1);
+        const wantsHook = utilityDigitsAvailable && player.ownsUtility('Beam Hook') && Boolean(this.keys.Digit2);
+        const target = player.resolveAimLock(candidate => Game.prototype.isValidAimLockTarget.call(this, player, candidate));
+        if (wantsHook && target) {
+            if (player.beamHookTarget !== target) {
+                const delta = Game.prototype.isWrappedWorld.call(this)
+                    ? nearestWrappedDisplacement(target.x, target.y, player.x, player.y)
+                    : { x: player.x - target.x, y: player.y - target.y };
+                player.beamHookTarget = target;
+                player.beamHookDistance = Math.hypot(delta.x, delta.y);
+                player.beamHookTargetX = target.x;
+                player.beamHookTargetY = target.y;
+            }
+        } else {
+            player.beamHookTarget = null;
+        }
+    }
+
+    applyBeamHookConstraint(player) {
+        const target = player?.beamHookTarget;
+        if (!target || !Game.prototype.isValidAimLockTarget.call(this, player, target)) {
+            if (player) player.beamHookTarget = null;
+            return false;
+        }
+        const targetDx = target.x - player.beamHookTargetX;
+        const targetDy = target.y - player.beamHookTargetY;
+        player.x += targetDx;
+        player.y += targetDy;
+        let delta = Game.prototype.isWrappedWorld.call(this)
+            ? nearestWrappedDisplacement(target.x, target.y, player.x, player.y)
+            : { x: player.x - target.x, y: player.y - target.y };
+        const distance = Math.hypot(delta.x, delta.y);
+        if (distance > 0) {
+            const nx = delta.x / distance;
+            const ny = delta.y / distance;
+            player.x = target.x + nx * player.beamHookDistance;
+            player.y = target.y + ny * player.beamHookDistance;
+            const radialSpeed = player.vx * nx + player.vy * ny;
+            player.vx -= radialSpeed * nx;
+            player.vy -= radialSpeed * ny;
+        }
+        player.beamHookTargetX = target.x;
+        player.beamHookTargetY = target.y;
+        return true;
+    }
+
+    applyScrapCollector(player, dt = 1 / 60) {
+        if (!player?.scrapCollectorActive) return 0;
+        const range = player.radius * 2 * 10;
+        const forward = { x: Math.sin(player.rotation), y: -Math.cos(player.rotation) };
+        let affected = 0;
+        for (const debris of this.hazards) {
+            if (!(debris instanceof SpaceDebris) || debris.isDestroyed
+                || (this.gameState === GAME_MODE.EXPERIMENTAL && debris.roomId !== player.roomId)) continue;
+            const delta = Game.prototype.isWrappedWorld.call(this)
+                ? nearestWrappedDisplacement(player.x, player.y, debris.x, debris.y)
+                : { x: debris.x - player.x, y: debris.y - player.y };
+            const distance = Math.hypot(delta.x, delta.y);
+            if (distance <= 0 || distance > range) continue;
+            const cosine = (delta.x * forward.x + delta.y * forward.y) / distance;
+            if (cosine < Math.cos(Math.PI / 12)) continue;
+            debris.vx += -delta.x / distance * 2400 * dt;
+            debris.vy += -delta.y / distance * 2400 * dt;
+            affected++;
+        }
+        return affected;
+    }
+
+    fireUtilityBlackHole(player) {
+        if (!player?.ownsUtility('1/100 Black Hole') || player.blackHoleCooldownTimer > 0) return false;
+        const speed = 1200;
+        const projectile = new Projectile(player.x, player.y,
+            Math.sin(player.rotation) * speed, -Math.cos(player.rotation) * speed, player.color);
+        projectile.owner = player;
+        projectile.roomId = player.roomId;
+        projectile.isUtilityEventHorizon = true;
+        projectile.canWrap = false;
+        projectile.lifeSpan = Infinity;
+        const camera = player.id === 1 ? this.getPlayerOneCamera() : this.camera;
+        const halfWidth = DESIGN_WIDTH / (2 * camera.zoom);
+        const halfHeight = DESIGN_HEIGHT / (2 * camera.zoom);
+        projectile.visibleWorldBounds = {
+            left: camera.x - halfWidth, right: camera.x + halfWidth,
+            top: camera.y - halfHeight, bottom: camera.y + halfHeight
+        };
+        Game.prototype.addProjectile.call(this, projectile);
+        player.blackHoleCooldownTimer = 36;
         return true;
     }
 
@@ -3113,7 +3278,7 @@ export class Game {
 
     handleFire(playerId) {
         const player = this.players.find(p => p.id === playerId);
-        if (!player || player.isDead || player.isWeaponLocked()
+        if (!player || player.isDead || player.isWeaponLocked() || player.scrapCollectorActive
             || this.victoryFadeActive || this.victoryScreenActive) return;
         if (this.gameState === GAME_MODE.EXPERIMENTAL && player.isNPC
             && !Game.prototype.hasHumanInExperimentalArea.call(this, player.roomId)) return;
@@ -3222,7 +3387,8 @@ export class Game {
         if (!target || target === lockingPlayer) return false;
         if (this.gameState === GAME_MODE.EXPERIMENTAL && target.roomId !== lockingPlayer.roomId) return false;
         if (target instanceof Player) {
-            return this.players.includes(target) && !target.isDead && !target.isEliminated;
+            return this.players.includes(target) && target.isTargetable?.() !== false
+                && !target.isDead && !target.isEliminated;
         }
         if (target instanceof Asteroid) {
             return this.asteroids.includes(target) && !target.isDestroyed;
@@ -3731,6 +3897,7 @@ export class Game {
                 player.previousX = player.x;
                 player.previousY = player.y;
                 if (player.id <= 2 && !player.isNPC) {
+                    Game.prototype.updateHeldUtilityIntents.call(this, player);
                     const oldPrestigeLevel = player.prestigeLevel;
                     const inputCamera = player.id === 1 ? this.getPlayerOneCamera() : this.camera;
                     if (player.id === 1) this.updateTouchAimLock();
@@ -3757,6 +3924,7 @@ export class Game {
                         worldRules,
                         touchIntent
                     });
+                    Game.prototype.applyBeamHookConstraint.call(this, player);
                     if (player.id === 1 && this.touch.persistentLock && !player.aimLockActive) this.touch.persistentLock = false;
                     if (player.id === 1) {
                         this.mouse.m2Pressed = false;
@@ -3884,7 +4052,8 @@ export class Game {
 
         if (worldRules.usesRooms) {
             this.players
-                .filter(player => !player.isDead && !player.isFixedPositionNPC && !player.isTranslationLocked())
+                .filter(player => !player.isDead && !player.isFixedPositionNPC
+                    && !player.isTranslationLocked() && !player.isIntangible())
                 .forEach(player => {
                     const collided = this.resolveExperimentalSlide(player);
                     if (!collided || !player.isExperimentalFleeingNPC) return;
@@ -3897,10 +4066,14 @@ export class Game {
                 });
         } else if (worldRules.bounded) {
             this.players
-                .filter(player => !player.isDead && !player.isFixedPositionNPC && !player.isTranslationLocked())
+                .filter(player => !player.isDead && !player.isFixedPositionNPC
+                    && !player.isTranslationLocked() && !player.isIntangible())
                 .forEach(player => Game.prototype.resolveBoundedSlide.call(this, player, worldRules.room));
         }
 
+        this.players.filter(player => !player.isNPC).forEach(player => {
+            Game.prototype.applyScrapCollector.call(this, player, dt);
+        });
         simulationAsteroids.forEach(a => {
             a.previousX = a.x;
             a.previousY = a.y;
@@ -3942,9 +4115,21 @@ export class Game {
             const projectilePlayers = worldRules.usesRooms
                 ? this.players.filter(player => Game.prototype.isHostileTarget.call(this, p.owner, player))
                 : this.players;
+            if (p.isUtilityEventHorizon && p.owner) {
+                const lifetimeCamera = p.owner.id === 1 ? this.getPlayerOneCamera() : this.camera;
+                const halfWidth = DESIGN_WIDTH / (2 * lifetimeCamera.zoom);
+                const halfHeight = DESIGN_HEIGHT / (2 * lifetimeCamera.zoom);
+                p.visibleWorldBounds = {
+                    left: lifetimeCamera.x - halfWidth,
+                    right: lifetimeCamera.x + halfWidth,
+                    top: lifetimeCamera.y - halfHeight,
+                    bottom: lifetimeCamera.y + halfHeight
+                };
+            }
             p.update(dt, this.asteroids, projectilePlayers, this.hazards, this.projectiles, worldRules);
-            if (worldRules.usesRooms && this.resolveExperimentalProjectileWall(p)) continue;
+            if (worldRules.usesRooms && !p.isUtilityEventHorizon && this.resolveExperimentalProjectileWall(p)) continue;
             if (worldRules.bounded
+                && !p.isUtilityEventHorizon
                 && Game.prototype.resolveBoundedProjectileWall.call(this, p, worldRules.room)) continue;
             
             // Lasers persist only while on screen (visible in any active camera)
@@ -4321,7 +4506,7 @@ export class Game {
 
     resolveExperimentalProjectileWall(projectile) {
         const room = Game.prototype.getExperimentalRoom.call(this, projectile.roomId) || this.experimentalRooms[0];
-        if (!room || projectile.isRemoved) return false;
+        if (!room || projectile.isRemoved || projectile.isUtilityEventHorizon) return false;
         const from = { x: projectile.previousX ?? projectile.x, y: projectile.previousY ?? projectile.y };
         const to = { x: projectile.x, y: projectile.y };
         let firstHit = null;
@@ -4867,6 +5052,7 @@ export class Game {
         for (let i = activeProjectiles.length - 1; i >= 0; i--) {
             const p = activeProjectiles[i];
             if (!p || p.isRemoved || p.hasDetonated) continue;
+            if (p.isUtilityEventHorizon) continue;
 
             // Check against Asteroids
             collisionContext.asteroidIndex.forEachNearby(p, a => {
@@ -4922,8 +5108,9 @@ export class Game {
         for (let i = activeProjectiles.length - 1; i >= 0; i--) {
             const p = activeProjectiles[i];
             if (!p || p.isRemoved || p.hasDetonated) continue;
+            if (p.isUtilityEventHorizon) continue;
             for (let player of Game.prototype.getExperimentalCandidates.call(this, p, 'players', this.players)) {
-                if (!player || player.isDead || player.isEliminated || p.owner === player) continue;
+                if (!player || player.isDead || player.isEliminated || player.isIntangible() || p.owner === player) continue;
                 if (!Game.prototype.isHostileTarget.call(this, p.owner, player)) continue;
                 if (!Game.prototype.areExperimentalEntitiesCoLocated.call(this, p, player)) continue;
                 if (checkCollision(p, player)) {
@@ -5024,7 +5211,8 @@ export class Game {
         // Players vs Asteroids and Hazards
         this.asteroidPlayerContacts ??= new WeakMap();
         for (let player of this.players) {
-            if (!player || player.isDead || player.isEliminated || (player.id !== 1 && player.id !== 2)) continue;
+            if (!player || player.isDead || player.isEliminated || player.isIntangible()
+                || (player.id !== 1 && player.id !== 2)) continue;
 
             // Asteroids
             for (let a of Game.prototype.getExperimentalCandidates.call(this, player, 'asteroids', this.asteroids)) {
