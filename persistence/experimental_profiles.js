@@ -1,7 +1,7 @@
 export const EXPERIMENTAL_PROFILE_STORAGE_KEY = 'zorka.experimentalProfiles.v2';
 export const LEGACY_PROFILE_STORAGE_KEY = 'zorka.experimentalProfiles.v1';
 export const EXPERIMENTAL_PROFILE_SCHEMA_VERSION = 2;
-export const EXPERIMENTAL_PROFILE_SLOT_COUNT = 4;
+export const EXPERIMENTAL_PROFILE_SLOT_COUNT = 5;
 export const EXPERIMENTAL_PROFILE_NAME_MAX_LENGTH = 20;
 
 const emptySlots = () => Array(EXPERIMENTAL_PROFILE_SLOT_COUNT).fill(null);
@@ -70,7 +70,9 @@ export class ExperimentalProfileStore {
     }
     assertSlot(slot) {
         if (!Number.isInteger(slot) || slot < 0 || slot >= EXPERIMENTAL_PROFILE_SLOT_COUNT) {
-            throw new RangeError('Adventure save slot must be between 0 and 3.');
+            throw new RangeError(
+                `Adventure save slot must be between 0 and ${EXPERIMENTAL_PROFILE_SLOT_COUNT - 1}.`
+            );
         }
     }
     createProfile(slot, name) {
