@@ -45,3 +45,28 @@ test('ammo reload countdown clamps at zero and formats authoritative time to two
     assert.equal(completed.texts.length, 0);
     assert.equal(completed.fills.length, 4);
 });
+
+test('capsule HUD uses name-only titles and renders only equipped-primary plus acquired Missile ammo', () => {
+    const player = new Player(0, 0);
+    player.weaponPurchaseTiers.Antigun = 1;
+    player.weaponPurchaseTiers.Doublegun = 1;
+    player.weaponPurchaseTiers.Laser = 1;
+    player.selectPrimaryWeapon('Laser');
+    const withoutMissile = context();
+    new HUD().drawPowerUpMeter(withoutMissile, player, 960, 980, 5);
+    assert.deepEqual(withoutMissile.texts.filter(text => ['Antigun', 'Doublegun', 'Laser', 'Orb', 'Missile'].includes(text.value)).map(text => text.value),
+        ['Antigun', 'Doublegun', 'Laser', 'Orb', 'Missile']);
+    assert.equal(withoutMissile.fills.filter(fill => fill.color === '#9a9a9a').length, player.clipRounds);
+
+    player.weaponPurchaseTiers.Missile = 2;
+    player.syncPurchasedWeaponBonuses();
+    player.missileAmmo = 2;
+    const withMissile = context();
+    new HUD().drawPowerUpMeter(withMissile, player, 960, 980, 5);
+    assert.equal(withMissile.fills.filter(fill => fill.color === '#9a9a9a').length, player.clipRounds + player.missileAmmo);
+
+    player.selectPrimaryWeapon('Ballistic');
+    const ballistic = context();
+    new HUD().drawPowerUpMeter(ballistic, player, 960, 980, 5);
+    assert.equal(ballistic.fills.filter(fill => fill.color === '#9a9a9a').length, player.clipRounds + player.missileAmmo);
+});

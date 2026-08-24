@@ -1310,6 +1310,9 @@ export class Game {
         document.querySelectorAll('[data-shop-weapon]').forEach(button => button.addEventListener('click', () => {
             Game.prototype.handleSector0ShopWeaponIntent.call(this, button.dataset.shopWeapon);
         }));
+        document.querySelectorAll('[data-shop-select-weapon]').forEach(button => button.addEventListener('click', () => {
+            Game.prototype.handleSector0ShopSelectionIntent.call(this, button.dataset.shopSelectWeapon);
+        }));
         document.getElementById('btn-sector-0-shop-back')?.addEventListener('click', () => {
             Game.prototype.closeSector0Shop.call(this);
         });
@@ -1391,8 +1394,6 @@ export class Game {
         const product = SECTOR_0_WEAPON_CATALOG.find(entry => entry.id === weaponId);
         if (!product || !player) return null;
         const tier = player.getWeaponPurchaseTier(weaponId);
-        const selected = player.equippedPrimaryGun === weaponId;
-        if (tier > 0 && !selected) return { product, tier, action: 'select', price: null };
         const nextTier = tier + 1;
         const capped = product.prices ? nextTier > product.prices.length : nextTier > product.maxTier;
         if (capped) return { product, tier, action: 'capped', price: null };
@@ -1405,11 +1406,6 @@ export class Game {
         if (!this.isShopMenuOpen || !Game.prototype.isHumanInSector0Shop.call(this)) return false;
         const offer = Game.prototype.getSector0ShopOffer.call(this, player, weaponId);
         if (!offer || offer.action === 'capped') return false;
-        if (offer.action === 'select') {
-            if (!player.equipPurchasedWeapon(weaponId)) return false;
-            Game.prototype.refreshSector0ShopMenu.call(this);
-            return true;
-        }
         if (player.scrap < offer.price || !player.purchaseWeaponTier(weaponId)) return false;
         player.scrap -= offer.price;
         Game.prototype.refreshSector0ShopMenu.call(this);
@@ -1418,6 +1414,14 @@ export class Game {
 
     purchaseSector0ShopUpgrade(weaponId) {
         return Game.prototype.handleSector0ShopWeaponIntent.call(this, weaponId);
+    }
+
+    handleSector0ShopSelectionIntent(weaponId) {
+        const player = Game.prototype.getHumanPlayer.call(this);
+        if (!this.isShopMenuOpen || !Game.prototype.isHumanInSector0Shop.call(this)) return false;
+        if (!player?.selectPrimaryWeapon(weaponId)) return false;
+        Game.prototype.refreshSector0ShopMenu.call(this);
+        return true;
     }
 
     refreshSector0ShopMenu() {
@@ -1429,10 +1433,15 @@ export class Game {
             const offer = Game.prototype.getSector0ShopOffer.call(this, player, button.dataset.shopWeapon);
             const price = button.closest('.shop-row')?.querySelector('.shop-price');
             if (price) price.textContent = offer?.price == null ? '—' : offer.price.toLocaleString('en-US');
-            button.textContent = offer?.action === 'select' ? 'Select Gun'
-                : offer?.action === 'capped' ? 'CAPPED' : offer?.product.label || button.dataset.shopWeapon;
+            button.textContent = offer?.action === 'capped' ? 'CAPPED' : offer?.product.label || button.dataset.shopWeapon;
             button.disabled = !offer || offer.action === 'capped'
                 || (offer.action === 'purchase' && player.scrap < offer.price);
+        });
+        document.querySelectorAll?.('[data-shop-select-weapon]').forEach(button => {
+            const weaponId = button.dataset.shopSelectWeapon;
+            const owned = weaponId === 'Ballistic' || player?.ownsWeapon?.(weaponId);
+            button.disabled = !owned;
+            button.classList.toggle('selected', player?.equippedPrimaryGun === weaponId);
         });
     }
 
@@ -4616,7 +4625,8 @@ export class Game {
         player.resetEvolutionForm();
         // Shop purchases are Player-owned persistent progression. Rebuild only their
         // runtime representation after clearing capsules, ammo, locks and forms.
-        if (player.equippedPrimaryGun) player.equipPurchasedWeapon(player.equippedPrimaryGun);
+        player.syncPurchasedWeaponBonuses();
+        player.selectPrimaryWeapon(player.equippedPrimaryGun || 'Ballistic');
 
         // Dying resets this ship's current kill streak AND best High Tide
         player.killStreak = 0;

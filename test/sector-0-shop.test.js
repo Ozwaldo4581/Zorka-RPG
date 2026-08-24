@@ -41,7 +41,7 @@ test('catalog order, fixed prices, and mathematical Missile prices are authorita
     assert.deepEqual([1, 2, 3, 4, 5, 10].map(missile.priceForTier), [200, 400, 600, 800, 1000, 2000]);
 });
 
-test('purchases and free selection preserve independent progression', () => {
+test('purchase rows upgrade independently while Shop-only capsule selection is free', () => {
     const player = new Player(0, 0, 1);
     player.roomId = shop.id;
     player.scrap = 2000;
@@ -51,24 +51,25 @@ test('purchases and free selection preserve independent progression', () => {
     assert.equal(Game.prototype.handleSector0ShopWeaponIntent.call(game, 'Laser'), true);
     assert.equal(player.getWeaponPurchaseTier('Doublegun'), 2);
     assert.equal(player.getWeaponPurchaseTier('Laser'), 1);
-    assert.equal(player.equippedPrimaryGun, 'Laser');
-    assert.equal(Game.prototype.getSector0ShopOffer.call(game, player, 'Doublegun').action, 'select');
+    assert.equal(player.equippedPrimaryGun, 'Ballistic');
+    assert.equal(Game.prototype.getSector0ShopOffer.call(game, player, 'Doublegun').action, 'purchase');
     const beforeSelect = player.scrap;
-    assert.equal(Game.prototype.handleSector0ShopWeaponIntent.call(game, 'Doublegun'), true);
+    assert.equal(Game.prototype.handleSector0ShopSelectionIntent.call(game, 'Doublegun'), true);
     assert.equal(player.scrap, beforeSelect);
     assert.equal(player.getWeaponPurchaseTier('Doublegun'), 2);
     assert.equal(Game.prototype.getSector0ShopOffer.call(game, player, 'Doublegun').price, 400);
-    assert.equal(Game.prototype.getSector0ShopOffer.call(game, player, 'Laser').action, 'select');
+    assert.equal(Game.prototype.getSector0ShopOffer.call(game, player, 'Laser').price, 1500);
 });
 
-test('capped weapons remain selectable when owned but not equipped', () => {
+test('capped weapons remain selectable only through the primary selector', () => {
     const player = new Player(0, 0, 1);
     player.weaponPurchaseTiers.Antigun = 3;
     player.weaponPurchaseTiers.Orb = 1;
+    player.roomId = shop.id;
     player.equipPurchasedWeapon('Orb');
     const game = shopGame(player);
-    assert.equal(Game.prototype.getSector0ShopOffer.call(game, player, 'Antigun').action, 'select');
-    player.equipPurchasedWeapon('Antigun');
+    assert.equal(Game.prototype.getSector0ShopOffer.call(game, player, 'Antigun').action, 'capped');
+    assert.equal(Game.prototype.handleSector0ShopSelectionIntent.call(game, 'Antigun'), true);
     assert.equal(Game.prototype.getSector0ShopOffer.call(game, player, 'Antigun').action, 'capped');
 });
 
@@ -80,9 +81,27 @@ test('failed transactions change neither Scrap, tier, nor selection', () => {
     assert.equal(Game.prototype.handleSector0ShopWeaponIntent.call(game, 'Antigun'), false);
     assert.equal(player.scrap, 99);
     assert.equal(player.getWeaponPurchaseTier('Antigun'), 0);
-    assert.equal(player.equippedPrimaryGun, null);
+    assert.equal(player.equippedPrimaryGun, 'Ballistic');
     game.isShopMenuOpen = false;
     assert.equal(Game.prototype.handleSector0ShopWeaponIntent.call(game, 'Laser'), false);
+});
+
+test('Player primary selection defaults to Ballistic and rejects Missile and unowned guns', () => {
+    const player = new Player(0, 0, 1);
+    player.roomId = shop.id;
+    const game = shopGame(player);
+    const initialProgress = structuredClone(player.weaponPurchaseTiers);
+    assert.equal(player.equippedPrimaryGun, 'Ballistic');
+    assert.equal(Game.prototype.handleSector0ShopSelectionIntent.call(game, 'Missile'), false);
+    assert.equal(Game.prototype.handleSector0ShopSelectionIntent.call(game, 'Laser'), false);
+    player.weaponPurchaseTiers.Laser = 1;
+    const missileState = [player.missileAmmo, player.missileReloadTimer, player.missileShotTimer];
+    assert.equal(Game.prototype.handleSector0ShopSelectionIntent.call(game, 'Laser'), true);
+    assert.deepEqual([player.missileAmmo, player.missileReloadTimer, player.missileShotTimer], missileState);
+    assert.equal(Game.prototype.handleSector0ShopSelectionIntent.call(game, 'Ballistic'), true);
+    game.isShopMenuOpen = false;
+    assert.equal(Game.prototype.handleSector0ShopSelectionIntent.call(game, 'Laser'), false);
+    assert.deepEqual({ ...player.weaponPurchaseTiers, Laser: 0 }, initialProgress);
 });
 
 test('purchased progress survives death cleanup while transient state resets', () => {
