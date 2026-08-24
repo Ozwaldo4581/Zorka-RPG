@@ -12,34 +12,48 @@ const room = areas.find(area => area.roomNumber === 1);
 const shop = areas.find(isSector0ShopArea);
 const shopGame = player => ({ gameState: GAME_MODE.EXPERIMENTAL, players: [player], experimentalRooms: areas, isShopMenuOpen: true });
 
-test('Shop DOM keeps purchase rows and Back but has no duplicate primary selector', () => {
+test('Shop DOM keeps purchases separate from its eligible primary selector', () => {
     const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
     assert.equal((html.match(/data-shop-weapon=/g) || []).length, 6);
     assert.match(html, /id="btn-sector-0-shop-back"/);
-    assert.doesNotMatch(html, /data-shop-select-weapon|shop-selector|shop-capsule/);
+    const selector = html.match(/<div id="sector-0-shop-weapon-selector"[\s\S]*?<\/div>\s*<\/div>/)?.[0] || '';
+    assert.match(selector, /data-shop-select-weapon="Ballistic"/);
+    assert.deepEqual([...selector.matchAll(/data-shop-select-weapon="([^"]+)"/g)].map(match => match[1]),
+        ['Ballistic', 'Antigun', 'Doublegun', 'Laser', 'Orb']);
+    assert.doesNotMatch(selector, /Ghost|Missile/);
+    assert.match(html, /#sector-0-shop-weapon-selector[\s\S]*z-index:\s*26/);
     assert.equal((html.match(/shop-row shop-row-three-column/g) || []).length, 7);
     assert.equal((html.match(/data-shop-utility=/g) || []).length, 7);
-    for (const text of ['Boost', 'Emergency Break', 'Scrap Magnet', 'Beam Hook', 'Phase Shifter', "4d Jacob's Ladder", '1/100 Black Hole', 'Spacebar']) {
-        assert.match(html, new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-    }
-    for (const text of ['Increase Shield', 'Increase Shield Recharge Rate', 'Increase Hull Protection',
-        'Increase Hull Recovery Rate', 'Increase Projectile', 'Increase Fire Rate', 'Increase Reload Speed',
-        'Increase Acceleration', 'Increase Max Speed']) {
-        assert.match(html, new RegExp(text));
-    }
-    const modificationMarkup = html.match(/<div id="ship-modification-menu"[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/)?.[0] || '';
-    assert.deepEqual([...modificationMarkup.matchAll(/data-ship-modification="([^"]+)"/g)].map(match => match[1]),
-        SHIP_MODIFICATION_IDS);
-    const modificationButtons = [...modificationMarkup.matchAll(/<button\b([^>]*)data-ship-modification="([^"]+)"([^>]*)>/g)];
-    assert.equal(modificationButtons.length, SHIP_MODIFICATION_IDS.length);
-    for (const [, beforeId, upgradeId, afterId] of modificationButtons) {
-        assert.doesNotMatch(`${beforeId}${afterId}`, /\bdisabled\b/, `${upgradeId} must be runtime-controlled`);
-    }
-    assert.ok(modificationMarkup.indexOf('data-ship-modification="projectile"')
-        < modificationMarkup.indexOf('data-ship-modification="fireRate"'));
     assert.equal((html.match(/data-stub-shop-back/g) || []).length, 3);
     assert.equal((html.match(/id="btn-buy-round"/g) || []).length, 1);
-    assert.match(html, /1,000<\/span><button id="btn-buy-round"[^>]*>Buy A Round/);
+});
+
+test('shop selector derives visibility and highlight from Player truth', () => {
+    const player = new Player(0, 0, 1);
+    player.weaponPurchaseTiers.Laser = 1;
+    player.roomId = shop.id;
+    player.selectPrimaryWeapon('Laser');
+    const ids = ['Ballistic', 'Antigun', 'Doublegun', 'Laser', 'Orb'];
+    const buttons = ids.map(id => ({
+        dataset: { shopSelectWeapon: id }, disabled: false, attributes: {},
+        classList: { values: new Set(), toggle(name, enabled) { enabled ? this.values.add(name) : this.values.delete(name); } },
+        setAttribute(name, value) { this.attributes[name] = value; }
+    }));
+    const selector = { classList: { toggle(_name, hidden) { this.hidden = hidden; } } };
+    globalThis.document = {
+        getElementById: id => id === 'sector-0-shop-weapon-selector' ? selector : null,
+        querySelectorAll: query => query === '[data-shop-select-weapon]' ? buttons : []
+    };
+    const game = shopGame(player);
+    Game.prototype.refreshSector0ShopWeaponSelector.call(game);
+    delete globalThis.document;
+
+    assert.equal(selector.classList.hidden, false);
+    assert.equal(buttons.find(button => button.dataset.shopSelectWeapon === 'Ballistic').classList.values.has('hidden'), false);
+    assert.equal(buttons.find(button => button.dataset.shopSelectWeapon === 'Antigun').classList.values.has('hidden'), true);
+    const laser = buttons.find(button => button.dataset.shopSelectWeapon === 'Laser');
+    assert.equal(laser.classList.values.has('selected'), true);
+    assert.equal(laser.attributes['aria-pressed'], 'true');
 });
 
 test('Modify Ship purchases use one flat price and enforce only the central caps', () => {

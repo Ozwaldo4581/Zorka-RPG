@@ -47,68 +47,54 @@ test('ammo reload countdown clamps at zero and formats authoritative time to two
     assert.equal(completed.fills.length, 4);
 });
 
-test('gameplay weapon HUD derives selected-first owned ordering and appends purchased Missile', () => {
+test('gameplay HUD composes selected primary, Utilities, then optional Missile', () => {
     const player = new Player(0, 0);
     player.weaponPurchaseTiers.Antigun = 1;
-    player.weaponPurchaseTiers.Doublegun = 1;
     player.weaponPurchaseTiers.Laser = 1;
     player.selectPrimaryWeapon('Laser');
-    const withoutMissile = context();
-    new HUD().drawPowerUpMeter(withoutMissile, player, 960, 980, 5);
-    assert.deepEqual(withoutMissile.texts.filter(text => ['Ballistic', 'Antigun', 'Doublegun', 'Laser', 'Orb', 'Ghost'].includes(text.value)).map(text => text.value),
-        ['Laser', 'Ballistic', 'Antigun', 'Doublegun']);
-    assert.equal(withoutMissile.texts.some(text => text.value === 'Missile'), false);
-    assert.equal(withoutMissile.fills.filter(fill => fill.color === '#9a9a9a').length, player.clipRounds);
+    player.purchaseUtility('Phase Shifter');
+    player.purchaseUtility('Boost');
+    const hud = new HUD();
 
-    player.weaponPurchaseTiers.Missile = 2;
+    const withoutMissile = hud.getBottomHudBoxes(player);
+    assert.deepEqual(withoutMissile.map(box => box.weaponId || box.utilityId),
+        ['Laser', 'Boost', 'Phase Shifter']);
+    assert.deepEqual(withoutMissile.map(box => box.type), ['primary', 'utility', 'utility']);
+    assert.equal(hud.getPrimaryWeaponBoxes(player).length, 1);
+    assert.equal(withoutMissile.some(box => box.weaponId === 'Ballistic' || box.weaponId === 'Antigun'), false);
+    assert.equal(withoutMissile[0].x < withoutMissile[1].x, true);
+
+    const initialWidth = withoutMissile.at(-1).x + withoutMissile.at(-1).width - withoutMissile[0].x;
+    player.purchaseUtility('Scrap Magnet');
+    const expanded = hud.getBottomHudBoxes(player);
+    assert.ok(expanded.at(-1).x + expanded.at(-1).width - expanded[0].x > initialWidth);
+    assert.deepEqual(expanded.filter(box => box.type === 'utility').map(box => box.utilityId),
+        UTILITY_IDS.filter(id => ['Boost', 'Scrap Magnet', 'Phase Shifter'].includes(id)));
+
+    player.weaponPurchaseTiers.Missile = 1;
     player.syncPurchasedWeaponBonuses();
-    player.missileAmmo = 2;
-    const withMissile = context();
-    new HUD().drawPowerUpMeter(withMissile, player, 960, 980, 5);
-    assert.equal(withMissile.fills.filter(fill => fill.color === '#9a9a9a').length, player.clipRounds + player.missileAmmo);
+    const withMissile = hud.getBottomHudBoxes(player);
+    assert.equal(withMissile.at(-1).type, 'missile');
+    assert.equal(withMissile.at(-1).weaponId, 'Missile');
+    assert.equal(withMissile[0].weaponId, player.equippedPrimaryGun);
 
-    player.selectPrimaryWeapon('Ballistic');
-    const ballistic = context();
-    new HUD().drawPowerUpMeter(ballistic, player, 960, 980, 5);
-    assert.deepEqual(ballistic.texts.filter(text => ['Ballistic', 'Antigun', 'Doublegun', 'Laser'].includes(text.value)).map(text => text.value),
-        ['Ballistic', 'Antigun', 'Doublegun', 'Laser']);
-    const labels = ballistic.texts.filter(text => ['Ballistic', 'Antigun', 'Doublegun', 'Laser', 'Missile'].includes(text.value));
-    assert.equal(labels.at(-1).value, 'Missile');
-    assert.equal(ballistic.fills.filter(fill => fill.color === '#9a9a9a').length, player.clipRounds + player.missileAmmo);
+    const ctx = context();
+    hud.drawPowerUpMeter(ctx, player, 960, 980, 6);
+    const weaponLabels = ctx.texts.filter(text => ['Ballistic', 'Antigun', 'Doublegun', 'Laser', 'Orb', 'Ghost', 'Missile'].includes(text.value));
+    assert.deepEqual(weaponLabels.map(text => text.value), ['Laser', 'Missile']);
 });
 
-test('primary capsule hit regions share render order and exclude the separate Missile status', () => {
+test('primary hit geometry contains only the rendered selected-primary bookend', () => {
     const hud = new HUD();
     const player = new Player(0, 0, 1);
     player.weaponPurchaseTiers.Antigun = 1;
-    player.weaponPurchaseTiers.Laser = 1;
-    player.weaponPurchaseTiers.Missile = 1;
-    player.selectPrimaryWeapon('Laser');
+    player.selectPrimaryWeapon('Antigun');
+    player.purchaseUtility('Boost');
     const boxes = hud.getPrimaryWeaponBoxes(player);
-    assert.deepEqual(boxes.map(box => box.weaponId), ['Laser', 'Ballistic', 'Antigun']);
-    for (const box of boxes) {
-        assert.equal(hud.getPrimaryWeaponAt(box.x + 1, box.y + 1, [player])?.weaponId, box.weaponId);
-    }
-    assert.equal(hud.getPrimaryWeaponAt(boxes.at(-1).x + boxes.at(-1).width + 8, 981, [player]), null);
-});
-
-test('shop weapon bar is fixed-order, selected-aware, Missile-last, and separately hit-tested', () => {
-    const hud = new HUD();
-    const player = new Player(0, 0);
-    player.weaponPurchaseTiers.Laser = 1;
-    player.weaponPurchaseTiers.Missile = 1;
-    player.selectPrimaryWeapon('Laser');
-    const hidden = context();
-    hud.drawShopWeaponBar(hidden, player, false, 960, 850);
-    assert.equal(hidden.texts.length, 0);
-    const shown = context();
-    hud.drawShopWeaponBar(shown, player, true, 960, 850);
-    assert.deepEqual(shown.texts.slice(1).map(text => text.value),
-        ['Ballistic', 'Antigun', 'Doublegun', 'Laser', 'Orb', 'Ghost', 'Missile']);
-    const boxes = hud.getShopWeaponBoxes(player);
-    assert.equal(hud.getShopPrimaryWeaponAt(boxes[3].x + 1, boxes[3].y + 1, [player])?.weaponId, 'Laser');
-    assert.equal(hud.getShopPrimaryWeaponAt(boxes.at(-1).x + 1, boxes.at(-1).y + 1, [player]), null);
-    assert.equal(shown.strokes.some(stroke => stroke.color === player.color && stroke.lineWidth === 3), true);
+    assert.deepEqual(boxes.map(box => box.weaponId), ['Antigun']);
+    assert.equal(hud.getPrimaryWeaponAt(boxes[0].x + 1, boxes[0].y + 1, [player])?.weaponId, 'Antigun');
+    const utility = hud.getBottomHudBoxes(player).find(box => box.type === 'utility');
+    assert.equal(hud.getPrimaryWeaponAt(utility.x + 1, utility.y + 1, [player]), null);
 });
 
 test('Utility Bar hides unpurchased utilities and expands in canonical order', () => {

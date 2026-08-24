@@ -1,4 +1,4 @@
-import { PRIMARY_WEAPON_IDS, UTILITY_IDS, UTILITY_PRESENTATION } from '../entities/player.js';
+import { UTILITY_IDS, UTILITY_PRESENTATION } from '../entities/player.js';
 
 export class HUD {
     constructor() {
@@ -29,13 +29,11 @@ export class HUD {
             this.drawSpeedMeter(ctx, players[0], 650, 980, 3);
             this.drawSpeedMeter(ctx, players[1], 1270, 980, 3);
         } else {
-            // Solo: owned weapons share one dynamic bottom-row selection surface.
+            // Solo: selected weapon, Utilities, and Missile share one bottom row.
             this.drawPowerUpMeter(ctx, players[0], 1920 / 2, 980, 6);
             this.drawXPBar(ctx, players[0], 1920 / 2, 980, 6);
             this.drawSpeedMeter(ctx, players[0], 1920 / 2, 980, 6);
         }
-
-        this.drawShopWeaponBar(ctx, players[0], Boolean(minimapContext?.shopMenuOpen), 1920 / 2, 850);
     }
 
     drawShopPrompts(ctx, currentArea, shopEligible, shopMenuOpen) {
@@ -162,75 +160,45 @@ export class HUD {
             : null;
     }
 
-    getGameplayPrimaryWeaponIds(player) {
+    getBottomHudBoxes(player, centerX = 1920 / 2, startY = 980) {
         if (!player) return [];
-        const owned = PRIMARY_WEAPON_IDS.filter(id => id === 'Ballistic' || player.ownsWeapon?.(id));
-        const selected = owned.includes(player.equippedPrimaryGun) ? player.equippedPrimaryGun : 'Ballistic';
-        return [selected, ...owned.filter(id => id !== selected)];
-    }
-
-    getPrimaryWeaponBoxes(player, centerX = 1920 / 2, startY = 980, maxCols = 6, fixedOrder = false) {
-        const names = fixedOrder ? [...PRIMARY_WEAPON_IDS] : this.getGameplayPrimaryWeaponIds(player);
         const slotWidth = 90;
         const slotHeight = 35;
         const gap = 8;
-        const rows = Math.ceil(names.length / maxCols);
-        return names.map((weaponId, index) => {
-            const row = Math.floor(index / maxCols);
-            const itemsInRow = row === rows - 1 ? names.length - row * maxCols : maxCols;
-            const rowWidth = itemsInRow * slotWidth + (itemsInRow - 1) * gap;
-            return {
-                weaponId,
-                x: centerX - rowWidth / 2 + (index % maxCols) * (slotWidth + gap),
-                y: startY + row * (slotHeight + gap),
-                width: slotWidth,
-                height: slotHeight
-            };
-        });
+        const entries = [
+            { type: 'primary', weaponId: player.equippedPrimaryGun || 'Ballistic' },
+            ...UTILITY_IDS.filter(id => player.ownsUtility?.(id)).map(utilityId => ({ type: 'utility', utilityId }))
+        ];
+        if (player.getWeaponPurchaseTier?.('Missile') > 0) {
+            entries.push({ type: 'missile', weaponId: 'Missile' });
+        }
+        const rowWidth = entries.length * slotWidth + Math.max(0, entries.length - 1) * gap;
+        return entries.map((entry, index) => ({
+            ...entry,
+            x: centerX - rowWidth / 2 + index * (slotWidth + gap),
+            y: startY,
+            width: slotWidth,
+            height: slotHeight
+        }));
+    }
+
+    getPrimaryWeaponBoxes(player, centerX = 1920 / 2, startY = 980) {
+        return this.getBottomHudBoxes(player, centerX, startY).filter(box => box.type === 'primary');
     }
 
     getPrimaryWeaponAt(x, y, players, isSplitScreen = false) {
         const player = players?.find(candidate => candidate.id === 1 && !candidate.isNPC);
         if (!player || player.isDead || player.isEventHorizon) return null;
         const centerX = isSplitScreen ? 650 : 1920 / 2;
-        const maxCols = isSplitScreen ? 3 : 6;
-        const box = this.getPrimaryWeaponBoxes(player, centerX, 980, maxCols).find(candidate =>
+        const box = this.getPrimaryWeaponBoxes(player, centerX, 980).find(candidate =>
             x >= candidate.x && x <= candidate.x + candidate.width
             && y >= candidate.y && y <= candidate.y + candidate.height
         );
         return box ? { player, weaponId: box.weaponId } : null;
     }
 
-    getShopWeaponBoxes(player, centerX = 1920 / 2, startY = 850) {
-        const ids = [...PRIMARY_WEAPON_IDS, 'Missile'];
-        const slotWidth = 90;
-        const gap = 8;
-        const rowWidth = ids.length * slotWidth + (ids.length - 1) * gap;
-        return ids.map((weaponId, index) => ({
-            weaponId, x: centerX - rowWidth / 2 + index * (slotWidth + gap), y: startY,
-            width: slotWidth, height: 35, isPrimary: weaponId !== 'Missile'
-        }));
-    }
-
-    getShopPrimaryWeaponAt(x, y, players) {
-        const player = players?.find(candidate => candidate.id === 1 && !candidate.isNPC);
-        if (!player || player.isDead || player.isEventHorizon) return null;
-        const box = this.getShopWeaponBoxes(player).find(candidate => candidate.isPrimary
-            && x >= candidate.x && x <= candidate.x + candidate.width
-            && y >= candidate.y && y <= candidate.y + candidate.height);
-        return box ? { player, weaponId: box.weaponId } : null;
-    }
-
     getUtilityBoxes(player, centerX = 1920 / 2, startY = 920) {
-        const ids = UTILITY_IDS.filter(id => player?.ownsUtility?.(id));
-        const slotWidth = 90;
-        const slotHeight = 35;
-        const gap = 8;
-        const rowWidth = ids.length * slotWidth + Math.max(0, ids.length - 1) * gap;
-        return ids.map((utilityId, index) => ({
-            utilityId, x: centerX - rowWidth / 2 + index * (slotWidth + gap), y: startY,
-            width: slotWidth, height: slotHeight
-        }));
+        return this.getBottomHudBoxes(player, centerX, startY).filter(box => box.type === 'utility');
     }
 
     drawScoreboard(ctx, players, swapUI = false, gameMode = '') {
@@ -414,8 +382,8 @@ export class HUD {
     drawPowerUpMeter(ctx, player, centerX, startY, maxCols = 5) {
         if (!player || player.isEventHorizon) return; // Hide power-up meter for Event Horizon
 
-        const boxes = this.getPrimaryWeaponBoxes(player, centerX, startY, maxCols);
-        boxes.forEach(box => {
+        const boxes = this.getBottomHudBoxes(player, centerX, startY);
+        boxes.filter(box => box.type === 'primary').forEach(box => {
             const { weaponId: name, x, y, width: slotWidth, height: slotHeight } = box;
 
             const primaryAmmo = player.getPrimaryAmmoState?.();
@@ -450,10 +418,10 @@ export class HUD {
         });
 
         // Missile remains an independent add-on and is never part of primary selection.
-        if (player.getWeaponPurchaseTier?.('Missile') > 0) {
-            const lastBox = boxes.at(-1);
-            const missileX = lastBox.x + lastBox.width + 8;
-            const missileY = lastBox.y;
+        const missileBox = boxes.find(box => box.type === 'missile');
+        if (missileBox) {
+            const missileX = missileBox.x;
+            const missileY = missileBox.y;
             this.drawAmmoMeter(ctx, player.getMissileAmmoState?.(), missileX + 45, missileY - 12, 76);
             ctx.strokeStyle = '#333';
             ctx.lineWidth = 1;
@@ -466,7 +434,7 @@ export class HUD {
             ctx.fillText('Missile', missileX + 45, missileY + 22);
         }
 
-        this.drawUtilityBar(ctx, player, centerX, startY - 60);
+        this.drawUtilityBar(ctx, player, centerX, startY, boxes.filter(box => box.type === 'utility'));
     }
 
     getUtilityStatus(player, utilityId) {
@@ -481,8 +449,7 @@ export class HUD {
         return { active: Boolean(active), cooldownRemaining: Math.max(0, Number(cooldownRemaining) || 0) };
     }
 
-    drawUtilityBar(ctx, player, centerX, startY) {
-        const boxes = this.getUtilityBoxes(player, centerX, startY);
+    drawUtilityBar(ctx, player, centerX, startY, boxes = this.getUtilityBoxes(player, centerX, startY)) {
         boxes.forEach(box => {
             const metadata = UTILITY_PRESENTATION[box.utilityId];
             const status = this.getUtilityStatus(player, box.utilityId);
@@ -508,31 +475,6 @@ export class HUD {
             ctx.fillStyle = status.cooldownRemaining > 0 && !status.active ? '#777' : '#fff';
             ctx.fillText(metadata.label, box.x + box.width / 2, box.y + 22);
         });
-    }
-
-    drawShopWeaponBar(ctx, player, shopMenuOpen, centerX, startY) {
-        if (!shopMenuOpen || !player) return;
-        ctx.save();
-        ctx.font = 'bold 18px Orbitron';
-        ctx.fillStyle = '#00ffff';
-        ctx.textAlign = 'center';
-        ctx.shadowColor = '#000';
-        ctx.shadowBlur = 8;
-        ctx.fillText('Select Weapon', centerX, startY - 18);
-        this.getShopWeaponBoxes(player, centerX, startY).forEach(box => {
-            const selected = box.isPrimary && box.weaponId === player.equippedPrimaryGun;
-            const owned = box.weaponId === 'Ballistic' || player.ownsWeapon?.(box.weaponId);
-            ctx.strokeStyle = selected ? player.color : (owned ? '#00ffff' : '#555');
-            ctx.lineWidth = selected ? 3 : 1;
-            ctx.fillStyle = selected ? player.color + '33'
-                : (owned ? 'rgba(0,0,0,0.7)' : 'rgba(55,55,55,0.72)');
-            ctx.strokeRect(box.x, box.y, box.width, box.height);
-            ctx.fillRect(box.x, box.y, box.width, box.height);
-            ctx.font = '8px Orbitron';
-            ctx.fillStyle = owned ? '#fff' : '#777';
-            ctx.fillText(box.weaponId, box.x + box.width / 2, box.y + 22);
-        });
-        ctx.restore();
     }
 
     // Geometry only: ammunition truth and timers remain Player-owned.

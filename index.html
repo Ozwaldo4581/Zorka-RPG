@@ -156,6 +156,15 @@
       .shop-price { color: #fff; font: bold 1.15rem Orbitron, sans-serif; text-align: right; }
       .shop-upgrade { width: 100%; margin: 0; padding: .7rem 1rem; font-size: 1rem; }
       .shop-upgrade:disabled { border-color: #555; color: #777; box-shadow: none; }
+      #sector-0-shop-weapon-selector {
+        position: absolute; z-index: 26; left: 50%; bottom: 7%; transform: translateX(-50%);
+        display: flex; flex-direction: column; align-items: center; gap: 10px;
+        color: #00ffff; font: bold 1rem Orbitron, sans-serif; pointer-events: auto;
+      }
+      #sector-0-shop-weapon-selector.hidden, .shop-weapon-choice.hidden { display: none; }
+      .shop-weapon-choices { display: flex; gap: 8px; }
+      .shop-weapon-choice { width: 110px; margin: 0; padding: .65rem .4rem; font-size: .72rem; background: rgba(0,0,0,.85); }
+      .shop-weapon-choice.selected { border-width: 3px; color: #fff; background: rgba(0,255,255,.2); box-shadow: 0 0 15px rgba(0,255,255,.65); }
       #main-menu {
         --notebook-height: min(110vh, 140vw);
 
@@ -990,6 +999,17 @@
           <div class="shop-row"><span class="shop-price">500</span><button class="menu-button shop-upgrade" data-ship-modification="maxSpeed">Increase Max Speed</button></div>
         </div>
         <div style="text-align:center"><button class="menu-button" data-stub-shop-back>BACK</button></div>
+      </div>
+    </div>
+
+    <div id="sector-0-shop-weapon-selector" class="hidden" aria-label="Select primary weapon">
+      <span>Select Weapon</span>
+      <div class="shop-weapon-choices">
+        <button class="menu-button shop-weapon-choice" data-shop-select-weapon="Ballistic" aria-pressed="false">Ballistic</button>
+        <button class="menu-button shop-weapon-choice hidden" data-shop-select-weapon="Antigun" aria-pressed="false">Antigun</button>
+        <button class="menu-button shop-weapon-choice hidden" data-shop-select-weapon="Doublegun" aria-pressed="false">Doublegun</button>
+        <button class="menu-button shop-weapon-choice hidden" data-shop-select-weapon="Laser" aria-pressed="false">Laser</button>
+        <button class="menu-button shop-weapon-choice hidden" data-shop-select-weapon="Orb" aria-pressed="false">Orb</button>
       </div>
     </div>
 
