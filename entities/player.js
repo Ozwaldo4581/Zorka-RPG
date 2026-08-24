@@ -569,6 +569,7 @@ export class Player {
         this.bonusSpeed = 0;
         this.restoreShieldCharges(this.maxShieldCharges);
         this.restorePurchasedWeaponLoadout();
+        this.refillMissileClip();
         this.resetTemporaryUtilityState();
     }
 

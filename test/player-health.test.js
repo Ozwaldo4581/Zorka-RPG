@@ -69,23 +69,27 @@ test('Game resolves immunity, shields, HP, death, and respawn in order', () => {
 });
 
 test('respawn refills only an acquired Missile clip and preserves its tier and selected primary', () => {
-    const player = new Player(0, 0, 1);
-    player.weaponPurchaseTiers.Laser = 1;
-    player.weaponPurchaseTiers.Missile = 4;
-    player.restorePurchasedWeaponLoadout();
-    player.selectPrimaryWeapon('Laser');
-    player.missileAmmo = 1;
-    player.missileReloadTimer = 7;
-    player.isDead = true;
-    const game = {
-        players: [player], gameState: 'ARCADE', audio: {},
-        getActiveCameras: () => [], beginGameplayMusic() {}
-    };
-    Game.prototype.respawnPlayer.call(game, player);
-    assert.deepEqual(
-        [player.hasMissile, player.missileLevel, player.missileAmmo, player.missileReloadTimer, player.equippedPrimaryGun],
-        [true, 4, player.getMissileCapacity(), 0, 'Laser']
-    );
+    const game = { gameState: 'ARCADE', audio: {}, getActiveCameras: () => [], beginGameplayMusic() {} };
+    for (const tier of [1, 4, 12]) {
+        const player = new Player(0, 0, 1);
+        player.weaponPurchaseTiers.Laser = 1;
+        player.weaponPurchaseTiers.Missile = tier;
+        player.restorePurchasedWeaponLoadout();
+        player.selectPrimaryWeapon('Laser');
+        player.missileAmmo = 0;
+        player.missileReloadTimer = 7;
+        player.missileShotTimer = 0.2;
+        player.isDead = true;
+        game.players = [player];
+
+        Game.prototype.respawnPlayer.call(game, player);
+        assert.equal(player.getWeaponPurchaseTier('Missile'), tier);
+        assert.deepEqual(
+            [player.hasMissile, player.missileLevel, player.missileAmmo, player.missileReloadTimer,
+                player.missileShotTimer, player.equippedPrimaryGun],
+            [true, tier, player.getMissileCapacity(), 0, 0, 'Laser']
+        );
+    }
 
     const unowned = new Player(0, 0, 2);
     unowned.isDead = true;

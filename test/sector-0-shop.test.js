@@ -309,7 +309,7 @@ test('purchased progress, Missile acquisition, and selected primary survive deat
     assert.equal(player.equippedPrimaryGun, 'Laser');
     assert.equal(player.activeGun, 'Laser');
     assert.equal(player.weaponStreamCounts.Laser, 1);
-    assert.equal(player.missileAmmo, 0);
+    assert.equal(player.missileAmmo, player.getMissileCapacity());
     assert.equal(player.missileReloadTimer, 0);
     assert.equal(player.missileShotTimer, 0);
 });
