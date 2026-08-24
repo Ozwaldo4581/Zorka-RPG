@@ -972,7 +972,7 @@ export class Game {
 
         // Menu buttons
         document.getElementById('btn-experimental-start').addEventListener('click', () => {
-            this.startExperimentalMode();
+            this.showExperimentalProfileSelection();
         });
 
 
