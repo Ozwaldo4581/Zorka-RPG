@@ -1,4 +1,4 @@
-import { updateNewtonian, checkCollision, nearestWrappedDisplacement, closestPointOnSegment } from '../physics.js';
+import { updateNewtonian, checkCollision, nearestWrappedDisplacement, closestPointOnSegment, getEmergencyBrakeForce } from '../physics.js';
 import { Projectile } from './projectile.js';
 import { DESIGN_WIDTH, DESIGN_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT } from '../world_config.js';
 import { isVisibleForLifetimeWarning } from './lifetime_warning.js';
@@ -1133,16 +1133,15 @@ export class Player {
             this.isThrusting = false;
         } else {
             if (this.emergencyBrakeActive) {
-                const speed = Math.hypot(this.vx, this.vy);
                 const acceleration = this.getEffectiveThrust();
-                const reduction = acceleration * dt;
-                if (speed <= reduction) {
+                const brake = getEmergencyBrakeForce(this, acceleration, dt);
+                if (brake.stopped) {
                     this.vx = 0;
                     this.vy = 0;
                     this.emergencyBrakeActive = false;
                 } else {
-                    fx = -this.vx / speed * acceleration;
-                    fy = -this.vy / speed * acceleration;
+                    fx = brake.x;
+                    fy = brake.y;
                 }
             }
             updateNewtonian(this, dt, { x: fx, y: fy }, worldRules);

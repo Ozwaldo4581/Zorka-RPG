@@ -1,4 +1,5 @@
 import { Player } from './entities/player.js';
+import { Spraak, SPRAAK_CONTACT_DAMAGE, SPRAAK_ENTITY_TYPE, SPRAAK_SPAWN_CHANCE } from './entities/spraak.js';
 import { Asteroid } from './entities/asteroid.js';
 import { SpaceDebris, Satellite } from './entities/hazards.js';
 import { Projectile } from './entities/projectile.js';
@@ -91,6 +92,11 @@ export const SECTOR_0_SHOP_PRICES = SECTOR_0_WEAPON_CATALOG;
 
 export function getNPCCapsuleRewardCount(npcLevel) {
     return Math.max(0, Math.floor(Number(npcLevel) || 0) - 3);
+}
+
+export function getSpraakXPReward(spraak) {
+    if (spraak?.entityType !== SPRAAK_ENTITY_TYPE || !Number.isFinite(spraak.level)) return 0;
+    return Math.max(0, Math.floor(spraak.level)) * 25;
 }
 
 export const PROJECTILE_COMBAT_CATEGORY = Object.freeze({
@@ -380,6 +386,7 @@ export class Game {
     async loadAssets() {
         this.assets = {
             ship: await this.loadImage('assets/ShipSketch_256x256.png'),
+            spraak: await this.loadImage('assets/spraak_wings_middle_356.png'),
             ufo: await this.loadImage('assets/1000008891.png'),
             cyborg: await this.loadImage('assets/cyborg_ship.webp'),
             dimensionX: await this.loadImage('assets/dimension_x_monster.webp'),
@@ -841,7 +848,35 @@ export class Game {
         if (this.gameState === GAME_MODE.EXPERIMENTAL) asteroid.roomId = experimentalRoomId;
         this.asteroids.push(asteroid);
         Game.prototype.indexExperimentalEntity.call(this, 'asteroids', asteroid);
+        if (size === 'large') Game.prototype.rollSpraakSpawn.call(this, asteroid);
         return asteroid;
+    }
+
+    rollSpraakSpawn(asteroid, random = Math.random) {
+        if (this.gameState !== GAME_MODE.EXPERIMENTAL
+            || !(asteroid instanceof Asteroid) || asteroid.size !== 'large'
+            || random() >= SPRAAK_SPAWN_CHANCE) return null;
+        return Game.prototype.spawnSpraak.call(this, asteroid);
+    }
+
+    spawnSpraak(anchor, level = null, random = Math.random) {
+        if (!anchor) return null;
+        const angle = random() * Math.PI * 2;
+        const spraak = new Spraak(
+            anchor.x,
+            anchor.y,
+            level ?? Game.prototype.getExperimentalEnemyLevel.call(this, 1),
+            random
+        );
+        const distance = (anchor.radius || 80) + spraak.radius + 55;
+        spraak.x += Math.cos(angle) * distance;
+        spraak.y += Math.sin(angle) * distance;
+        spraak.id = Math.max(1, ...this.players.map(player => player.id || 0)) + 1;
+        spraak.roomId = anchor.roomId || this.experimentalRooms?.[0]?.id;
+        spraak.clusterAnchor = anchor;
+        this.players.push(spraak);
+        Game.prototype.indexExperimentalEntity.call(this, 'players', spraak);
+        return spraak;
     }
 
     getRpgAsteroidClusters(roomId = null) {
@@ -4766,6 +4801,7 @@ export class Game {
             if (target instanceof Asteroid) {
                 if (target.size === 'large') {
                     this.awardXP(killer, 1, target);
+                    Game.prototype.rollSpraakSpawn.call(this, target);
                     for (let i = 0; i < 3; i++) this.spawnAsteroid('medium', target.x, target.y, target.roomId);
                     
                     // Queue a respawn for a new large asteroid
@@ -4996,6 +5032,14 @@ export class Game {
             player.respawnTimer = 0;
             Game.prototype.resolveExperimentalOrdinaryNPCDeath.call(this, player, killer);
         }
+        if (player.entityType === SPRAAK_ENTITY_TYPE) {
+            player.isEliminated = true;
+            player.respawnTimer = 0;
+            player.clearTarget?.();
+            Game.prototype.unindexExperimentalEntity.call(this, 'players', player);
+            const index = this.players.indexOf(player);
+            if (index !== -1) this.players.splice(index, 1);
+        }
 
         if (this.gameState === GAME_MODE.EXPERIMENTAL && !player.isNPC) {
             player.experimentalWorldResetPending = true;
@@ -5022,10 +5066,13 @@ export class Game {
 
         // Award the confirmed kill before Hardcore clears the victim's progression.
         if (killer && killer !== player && typeof killer.addCapsule === 'function' && !player.noKillReward) {
-            if (player.isNPC && !player.isSpecter) {
+            const isSpraak = player.entityType === SPRAAK_ENTITY_TYPE;
+            if (isSpraak) {
+                Game.prototype.resolveSpraakKillReward.call(this, player, killer);
+            } else if (player.isNPC && !player.isSpecter) {
                 this.awardXP(killer, Game.prototype.getNPCXPReward.call(this, player), player);
             }
-            if (this.gameState === GAME_MODE.EXPERIMENTAL && player.isNPC) {
+            if (this.gameState === GAME_MODE.EXPERIMENTAL && player.isNPC && !isSpraak) {
                 let debrisCount;
                 if (player.isSpecter) {
                     const human = this.players.find(candidate => !candidate.isNPC);
@@ -5041,12 +5088,16 @@ export class Game {
                 }
             }
             if (player.isNPC) {
-                const capsuleCount = getNPCCapsuleRewardCount(player.level);
-                for (let count = 0; count < capsuleCount; count++) killer.addCapsule();
+                if (!isSpraak) {
+                    const capsuleCount = getNPCCapsuleRewardCount(player.level);
+                    for (let count = 0; count < capsuleCount; count++) killer.addCapsule();
+                }
             } else killer.addCapsule();
-            killer.score = (killer.score || 0) + 1;
-            killer.killStreak = (killer.killStreak || 0) + 1;
-            if (killer.killStreak > (killer.highTide || 0)) killer.highTide = killer.killStreak;
+            if (!isSpraak) {
+                killer.score = (killer.score || 0) + 1;
+                killer.killStreak = (killer.killStreak || 0) + 1;
+                if (killer.killStreak > (killer.highTide || 0)) killer.highTide = killer.killStreak;
+            }
         }
 
         const isOneLifeHuman = (this.gameState === 'ARCADE' || this.gameState === GAME_MODE.EXPERIMENTAL)
@@ -5117,6 +5168,13 @@ export class Game {
             killer.x, killer.y - killer.radius - 24, killer.color, killer.roomId, killer);
         if (!killer.isNPC) Game.prototype.saveExperimentalProfile.call(this, killer);
         return levelsGained;
+    }
+
+    resolveSpraakKillReward(spraak, killer) {
+        const reward = getSpraakXPReward(spraak);
+        if (reward <= 0) return 0;
+        this.awardXP(killer, reward, spraak);
+        return reward;
     }
 
     getNPCXPReward(npc) {
@@ -5403,6 +5461,26 @@ export class Game {
                     this.removeProjectile(p);
                     this.playerDeath(player, p.owner);
                 }
+            }
+        }
+
+        // Spraak contact is an asymmetric Game-owned combat outcome. World bodies
+        // intentionally never enter this ship-only pass.
+        this.spraakShipContacts ??= new WeakMap();
+        for (const spraak of this.players.filter(player => player?.entityType === SPRAAK_ENTITY_TYPE
+            && !player.isDead && !player.isEliminated)) {
+            const contacts = this.spraakShipContacts.get(spraak) || new Set();
+            this.spraakShipContacts.set(spraak, contacts);
+            for (const ship of this.players) {
+                if (!ship || ship === spraak || ship.entityType === SPRAAK_ENTITY_TYPE
+                    || ship.isDead || ship.isEliminated || ship.roomId !== spraak.roomId) continue;
+                if (!checkCollision(spraak, ship)) {
+                    contacts.delete(ship);
+                    continue;
+                }
+                if (contacts.has(ship)) continue;
+                contacts.add(ship);
+                Game.prototype.resolvePlayerDamage.call(this, ship, SPRAAK_CONTACT_DAMAGE, spraak);
             }
         }
 
