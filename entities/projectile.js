@@ -34,6 +34,7 @@ export class Projectile {
         this.aoeRadius = 0;
         this.isUtilityEventHorizon = false;
         this.visibleWorldBounds = null;
+        this.damage = 1;
     }
 
     update(dt, asteroids = [], players = [], hazards = [], projectiles = [], worldRules = null) {

@@ -170,6 +170,8 @@ export class Player {
         this.shieldRechargeUpgradeCount = 0;
         this.maxProjectileUpgrades = MAX_PROJECTILE_UPGRADES;
         this.maxSpeedUpgrades = 10;
+        this.shipUpgrades = Object.seal({ shield: 0, shieldRecharge: 0, hullProtection: 0,
+            hullRecovery: 0, fireRate: 0, reloadSpeed: 0, acceleration: 0, projectile: 0, maxSpeed: 0 });
         this.maxShieldRechargeUpgrades = MAX_SHIELD_RECHARGE_UPGRADES;
 
         // NPC Personality / Behavior state
@@ -377,8 +379,7 @@ export class Player {
         while (this.totalXP >= this.getLevelThreshold(this.level + 1)) {
             this.level++;
             this.increaseMaxHP();
-            if (!this.isNPC) this.increaseMaxShields();
-            this.pendingLevelUps++;
+            if (!this.isNPC) this.applyShieldUpgrade();
             levelsGained++;
         }
         return levelsGained;
@@ -451,7 +452,7 @@ export class Player {
     }
 
     getNormalShipSpeedCap() {
-        return NORMAL_SHIP_SPEED_CAP;
+        return NORMAL_SHIP_SPEED_CAP * (1 + (this.shipUpgrades?.maxSpeed || 0) * 0.1);
     }
 
     getPersistentProgressionSnapshot() {
@@ -463,6 +464,11 @@ export class Player {
             speedUpgradeCount: this.speedUpgradeCount,
             shieldRechargeUpgradeCount: this.shieldRechargeUpgradeCount,
             deaths: this.deaths
+            ,scrap: this.scrap
+            ,weaponPurchaseTiers: { ...this.weaponPurchaseTiers }
+            ,purchasedUtilities: { ...this.purchasedUtilities }
+            ,equippedPrimaryGun: this.equippedPrimaryGun
+            ,shipUpgrades: { ...this.shipUpgrades }
         };
     }
 
@@ -491,8 +497,13 @@ export class Player {
         this.shieldRechargeUpgradeCount = Math.min(this.maxShieldRechargeUpgrades,
             integer(snapshot?.shieldRechargeUpgradeCount ?? snapshot?.levelShieldUpgradeCount));
         this.deaths = integer(snapshot?.deaths);
-        const usedChoices = this.projectileUpgradeCount + this.speedUpgradeCount + this.shieldRechargeUpgradeCount;
-        this.pendingLevelUps = integer(snapshot?.pendingLevelUps, Math.max(0, this.level - usedChoices));
+        this.scrap = integer(snapshot?.scrap);
+        for (const id of SHOP_WEAPON_IDS) this.weaponPurchaseTiers[id] = integer(snapshot?.weaponPurchaseTiers?.[id]);
+        for (const id of UTILITY_IDS) this.purchasedUtilities[id] = snapshot?.purchasedUtilities?.[id] === true;
+        for (const id of Object.keys(this.shipUpgrades)) this.shipUpgrades[id] = integer(snapshot?.shipUpgrades?.[id]);
+        this.equippedPrimaryGun = PRIMARY_WEAPON_IDS.includes(snapshot?.equippedPrimaryGun)
+            ? snapshot.equippedPrimaryGun : 'Ballistic';
+        this.pendingLevelUps = 0;
         this.maxHP = BASE_PLAYER_HP + HUMAN_STARTING_HP_BONUS + this.level;
         this.restoreHP();
         if (this.isExperimentalFleeingNPC) this.baselineMaxShieldCharges = 0;
@@ -500,6 +511,7 @@ export class Player {
             ? 0 : this.baselineMaxShieldCharges + (this.isNPC ? 0 : this.level);
         this.updateShieldRechargeDelay();
         this.restoreShieldCharges(this.maxShieldCharges);
+        this.restorePurchasedWeaponLoadout();
         return this.getPersistentProgressionSnapshot();
     }
 
@@ -2051,6 +2063,7 @@ export class Player {
             const p = new Projectile(sx, sy, vx, vy, this.color);
             p.owner = this;
             p.isLaser = baseProjectile.isLaser;
+            p.damage = baseProjectile.isOrb ? 3 : baseProjectile.isLaser ? 2 : 1;
             p.isBallistic = Boolean(baseProjectile.isBallistic);
             p.radius = baseProjectile.radius;
             p.lifeSpan = baseProjectile.lifeSpan;

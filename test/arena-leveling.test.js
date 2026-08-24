@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 
 import { Asteroid } from '../entities/asteroid.js';
 import { SpaceDebris, Satellite } from '../entities/hazards.js';
-import { NPC_MAX_PROJECTILE_UPGRADES, Player } from '../entities/player.js';
+import { Player } from '../entities/player.js';
 import { Game } from '../game.js';
 
-test('XP uses cumulative quadratic per-level requirements and queues every crossed level', () => {
+test('XP uses cumulative quadratic requirements and applies automatic HP and Shield levels', () => {
     const player = new Player(0, 0);
+    const startingHP = player.maxHP;
     assert.equal(player.level, 0);
     assert.deepEqual([0, 1, 2, 3, 4].map(level => player.getLevelThreshold(level)), [0, 100, 500, 1400, 3000]);
     assert.deepEqual([0, 1, 2, 3, 4, 10].map(level => player.getXPRequirement(level)), [100, 400, 900, 1600, 2500, 12100]);
@@ -17,7 +18,11 @@ test('XP uses cumulative quadratic per-level requirements and queues every cross
     assert.equal(player.addXP(400), 1);
     assert.equal(player.totalXP, 500);
     assert.equal(player.level, 2);
-    assert.equal(player.pendingLevelUps, 2);
+    assert.equal(player.pendingLevelUps, 0);
+    assert.equal(player.maxHP, startingHP + 2);
+    assert.equal(player.currentHP, startingHP + 2);
+    assert.equal(player.maxShieldCharges, 2);
+    assert.equal(player.shieldCharges, 2);
     assert.equal(player.score, 0);
     assert.equal(player.addXP(-1), 0);
     assert.equal(player.addXP(Number.NaN), 0);
@@ -73,7 +78,7 @@ test('NPCs immediately resolve every queued choice from selectable upgrades', ()
     assert.equal(npc.shieldRechargeUpgradeCount, 3);
 });
 
-test('new NPCs initialize at a target level with consistent XP and resolved upgrades', () => {
+test('new NPCs initialize at a target level without queued player choices', () => {
     for (const targetLevel of [3, 8, 25, 500]) {
         const npc = new Player(0, 0);
         npc.isNPC = true;
@@ -81,12 +86,9 @@ test('new NPCs initialize at a target level with consistent XP and resolved upgr
         assert.equal(npc.level, targetLevel);
         assert.equal(npc.totalXP, npc.getLevelThreshold(targetLevel));
         assert.equal(npc.pendingLevelUps, 0);
-        assert.equal(npc.projectileUpgradeCount, Math.min(NPC_MAX_PROJECTILE_UPGRADES, targetLevel));
-        assert.equal(npc.speedUpgradeCount,
-            Math.min(npc.maxSpeedUpgrades, Math.max(0, targetLevel - NPC_MAX_PROJECTILE_UPGRADES)));
-        assert.equal(npc.shieldRechargeUpgradeCount,
-            Math.min(npc.maxShieldRechargeUpgrades,
-                Math.max(0, targetLevel - NPC_MAX_PROJECTILE_UPGRADES - npc.maxSpeedUpgrades)));
+        assert.equal(npc.projectileUpgradeCount, 0);
+        assert.equal(npc.speedUpgradeCount, 0);
+        assert.equal(npc.shieldRechargeUpgradeCount, 0);
         assert.equal(npc.score, 0);
         assert.equal(npc.prestigeLevel, 0);
     }
