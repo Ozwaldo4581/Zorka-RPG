@@ -2,13 +2,16 @@ import { Player } from './player.js';
 import { getDirectionalForce, getEmergencyBrakeForce, updateNewtonian } from '../physics.js';
 
 export const SPRAAK_ENTITY_TYPE = 'SPRAAK';
-export const SPRAAK_SIZE_MULTIPLIER = 0.75;
+export const SPRAAK_SIZE_MULTIPLIER = 1;
 export const SPRAAK_SPAWN_CHANCE = 0.33;
 export const SPRAAK_CONTACT_DAMAGE = 3;
 export const SPRAAK_ACQUISITION_RANGE = 900;
 export const SPRAAK_GIVE_UP_RANGE = 1200;
 export const SPRAAK_HOOK_RANGE = 240;
-export const SPRAAK_DASH_DURATION = 0.2;
+export const SPRAAK_DASH_DURATION = 0.4;
+export const SPRAAK_PURSUIT_FORCE_MULTIPLIER = 0.8;
+export const SPRAAK_DASH_FORCE_MULTIPLIER = 24;
+export const SPRAAK_DASH_SPEED_MULTIPLIER = 10;
 
 export const SPRAAK_STATE = Object.freeze({
     ROAM: 'ASTEROID_ROAM', PURSUE: 'PURSUE', HOOK: 'HOOK_ORBIT',
@@ -25,7 +28,7 @@ export class Spraak extends Player {
         this.name = 'Spraak';
         this.radius *= SPRAAK_SIZE_MULTIPLIER;
         this.level = Math.max(1, Math.floor(Number(level) || 1));
-        this.maxHP = 6 + this.level;
+        this.maxHP = this.level + 1;
         this.currentHP = this.maxHP;
         this.maxShieldCharges = 0;
         this.baselineMaxShieldCharges = 0;
@@ -97,7 +100,7 @@ export class Spraak extends Player {
 
         let fx = 0;
         let fy = 0;
-        const steer = (x, y, strength = 0.8) => {
+        const steer = (x, y, strength = SPRAAK_PURSUIT_FORCE_MULTIPLIER) => {
             const dx = x - this.x;
             const dy = y - this.y;
             this.rotation = Math.atan2(dy, dx) + Math.PI / 2;
@@ -132,6 +135,7 @@ export class Spraak extends Player {
                     const dy = this.target.y - this.y;
                     const distance = Math.hypot(dx, dy) || 1;
                     this.dashDirection = { x: dx / distance, y: dy / distance };
+                    this.rotation = Math.atan2(this.dashDirection.y, this.dashDirection.x) + Math.PI / 2;
                 }
                 this.state = SPRAAK_STATE.DASH;
                 this.stateTimer = SPRAAK_DASH_DURATION;
@@ -141,8 +145,8 @@ export class Spraak extends Player {
             }
         } else if (this.state === SPRAAK_STATE.DASH) {
             this.stateTimer = Math.max(0, this.stateTimer - dt);
-            fx = this.dashDirection.x * this.getEffectiveThrust() * 3;
-            fy = this.dashDirection.y * this.getEffectiveThrust() * 3;
+            fx = this.dashDirection.x * this.getEffectiveThrust() * SPRAAK_DASH_FORCE_MULTIPLIER;
+            fy = this.dashDirection.y * this.getEffectiveThrust() * SPRAAK_DASH_FORCE_MULTIPLIER;
             this.rotation = Math.atan2(this.dashDirection.y, this.dashDirection.x) + Math.PI / 2;
             if (this.stateTimer === 0) this.state = this.target ? SPRAAK_STATE.PURSUE : SPRAAK_STATE.RETURN;
         } else {
@@ -159,7 +163,9 @@ export class Spraak extends Player {
         }
         this.isThrusting = fx !== 0 || fy !== 0;
         updateNewtonian(this, dt, { x: fx, y: fy }, worldRules);
-        const cap = this.state === SPRAAK_STATE.DASH ? this.getNormalShipSpeedCap() * 3 : this.getNormalShipSpeedCap();
+        const cap = this.state === SPRAAK_STATE.DASH
+            ? this.getNormalShipSpeedCap() * SPRAAK_DASH_SPEED_MULTIPLIER
+            : this.getNormalShipSpeedCap();
         const speed = Math.hypot(this.vx, this.vy);
         if (speed > cap) {
             this.vx = this.vx / speed * cap;
@@ -168,16 +174,10 @@ export class Spraak extends Player {
     }
 
     draw(ctx, assets, camera) {
+        if (this.isDead || this.isEliminated) return;
         ctx.save();
         camera.apply(ctx, this.x, this.y);
-        if (this.state === SPRAAK_STATE.HOOK && this.target) {
-            ctx.strokeStyle = 'rgba(125, 225, 255, 0.8)';
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.moveTo(0, 0);
-            ctx.lineTo(this.target.x - this.x, this.target.y - this.y);
-            ctx.stroke();
-        }
+        this.drawShipHealthBar(ctx, { showShields: false });
         ctx.rotate(this.rotation);
         const size = this.radius * 3.6;
         if (assets.spraak) ctx.drawImage(assets.spraak, -size / 2, -size / 2, size, size);
