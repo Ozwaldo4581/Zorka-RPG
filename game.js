@@ -2762,6 +2762,7 @@ export class Game {
 
     spawnExperimentalPlayerSpecter(human) {
         if (this.gameState !== GAME_MODE.EXPERIMENTAL || !human || human.isNPC || human.isDead) return [];
+        const recoveryScrap = Math.max(0, Number(human.pendingSpecterRecoveryScrap) || 0);
         const room = Game.prototype.getExperimentalRoom.call(this, human.roomId);
         if (!room || room.roomNumber <= 0) return [];
 
@@ -2786,6 +2787,7 @@ export class Game {
             npc.isOrdinaryExperimentalNPC = true;
             npc.isExperimentalFleeingNPC = true;
             npc.isExperimentalSpawnSpecter = true;
+            npc.specterRecoveryScrap = recoveryScrap;
             npc.configureSpecterLifetime();
             npc.noRespawn = true;
             if (typeof this.configurePlayerShields === 'function') this.configurePlayerShields(npc);
@@ -2798,6 +2800,7 @@ export class Game {
             Game.prototype.indexExperimentalEntity.call(this, 'players', npc);
             spawned.push(npc);
         }
+        human.pendingSpecterRecoveryScrap = 0;
         return spawned;
     }
 
@@ -5024,8 +5027,13 @@ export class Game {
         player.isDead = true;
         player.deaths++;
         // Scrap is Player-owned progression, but losing it is an authoritative
-        // confirmed-death outcome. Clear it before persistence can observe death.
-        if (!player.isNPC) player.scrap = 0;
+        // confirmed-death outcome. Capture the pre-death amount for the one
+        // respawn Specter's recovery drop, then clear Scrap before persistence
+        // can observe the death.
+        if (!player.isNPC) {
+            player.pendingSpecterRecoveryScrap = Math.max(0, Number(player.scrap) || 0);
+            player.scrap = 0;
+        }
         player.resetControllerAimLock(true);
         if (!player.isNPC && player.id === 1) Game.prototype.resetTouchInput.call(this);
         this.clearAimLocksForTarget(player);
@@ -5078,8 +5086,10 @@ export class Game {
                 this.awardXP(killer, Game.prototype.getNPCXPReward.call(this, player), player);
             }
             if (this.gameState === GAME_MODE.EXPERIMENTAL && player.isNPC && isSpecter) {
-                const human = Game.prototype.getHumanPlayer.call(this);
-                const debrisCount = Math.floor(Math.max(0, Number(human?.scrap) || 0) * 0.1);
+                const recoveryScrap = player.isExperimentalSpawnSpecter
+                    ? Math.max(0, Number(player.specterRecoveryScrap) || 0)
+                    : Math.max(0, Number(Game.prototype.getHumanPlayer.call(this)?.scrap) || 0);
+                const debrisCount = Math.floor(recoveryScrap * 0.1);
                 if (debrisCount > 0) {
                     Game.prototype.spawnDebrisBurst.call(this, player.x, player.y, player.roomId, debrisCount);
                 }
