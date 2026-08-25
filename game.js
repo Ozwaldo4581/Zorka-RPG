@@ -863,10 +863,11 @@ export class Game {
     spawnSpraak(anchor, level = null, random = Math.random) {
         if (!anchor) return null;
         const angle = random() * Math.PI * 2;
+        const encounterLevel = Game.prototype.getExperimentalEncounterState.call(this, anchor.roomId)?.npcLevel;
         const spraak = new Spraak(
             anchor.x,
             anchor.y,
-            level ?? Game.prototype.getExperimentalEnemyLevel.call(this, 1),
+            level ?? encounterLevel ?? Game.prototype.getExperimentalEnemyLevel.call(this, 1),
             random
         );
         const distance = (anchor.radius || 80) + spraak.radius + 55;

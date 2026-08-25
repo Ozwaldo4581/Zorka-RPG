@@ -29,7 +29,8 @@ function spawnGame(randomValue) {
     const game = {
         players: [], asteroids: [], experimentalRooms: [{ id: 'sector-1' }],
         gameState: GAME_MODE.EXPERIMENTAL,
-        experimentalEntityAreas: null
+        experimentalEntityAreas: null,
+        experimentalEncounterStates: new Map([['sector-1', { npcLevel: 2 }]])
     };
     game.spawnSpraak = Game.prototype.spawnSpraak;
     game.rollSpraakSpawn = Game.prototype.rollSpraakSpawn;
@@ -44,6 +45,7 @@ test('Large Asteroid Spraak rolls are deterministic and anchored safely', () => 
     assert.equal(passing.game.players.length, 1);
     assert.ok(Math.hypot(passing.result.x - 400, passing.result.y - 500)
         > passing.asteroid.radius + passing.result.radius);
+    assert.equal(passing.result.level, 2);
     assert.equal(spawnGame(0.5).result, null);
     const medium = new Asteroid(0, 0, 'medium');
     assert.equal(Game.prototype.rollSpraakSpawn.call({ players: [] }, medium, () => 0), null);
