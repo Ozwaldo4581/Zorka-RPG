@@ -5023,6 +5023,9 @@ export class Game {
         if (!player || player.isDead || player.currentHP > 0) return;
         player.isDead = true;
         player.deaths++;
+        // Scrap is Player-owned progression, but losing it is an authoritative
+        // confirmed-death outcome. Clear it before persistence can observe death.
+        if (!player.isNPC) player.scrap = 0;
         player.resetControllerAimLock(true);
         if (!player.isNPC && player.id === 1) Game.prototype.resetTouchInput.call(this);
         this.clearAimLocksForTarget(player);
