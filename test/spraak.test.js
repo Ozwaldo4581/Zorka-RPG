@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Game, GAME_MODE, getSpraakXPReward } from '../game.js';
+import { Game, GAME_MODE, SPRAAK_ASSET_PATH, getSpraakXPReward } from '../game.js';
 import { Asteroid } from '../entities/asteroid.js';
 import { Player } from '../entities/player.js';
 import {
@@ -10,6 +10,7 @@ import {
 } from '../entities/spraak.js';
 
 test('Spraak has explicit identity, player-relative size, level HP, no shields, and no guns', () => {
+    assert.equal(SPRAAK_ASSET_PATH, 'assets/spraak_wings_middle_256.png');
     const player = new Player(0, 0);
     for (const level of [1, 2, 5]) {
         const spraak = new Spraak(0, 0, level);
@@ -72,7 +73,7 @@ test('Spraak behavior transitions through pursuit, hook, brake, and a doubled di
     spraak.update(0.01, options);
     assert.equal(spraak.state, SPRAAK_STATE.DASH);
     assert.equal(spraak.stateTimer, SPRAAK_DASH_DURATION);
-    assert.equal(SPRAAK_DASH_DURATION, 0.4);
+    assert.equal(SPRAAK_DASH_DURATION, 0.75);
     assert.equal(SPRAAK_DASH_FORCE_MULTIPLIER, 24);
     assert.equal(SPRAAK_DASH_SPEED_MULTIPLIER, 10);
     assert.equal(SPRAAK_PURSUIT_FORCE_MULTIPLIER, 0.8);

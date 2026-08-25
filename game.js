@@ -51,6 +51,7 @@ export const PLAYER_COLORS = Object.freeze([
 ]);
 export const DEFAULT_P1_CONTROL_MODE = 'KEYBOARD';
 export const MISSILE_DAMAGE = 3;
+export const SPRAAK_ASSET_PATH = 'assets/spraak_wings_middle_256.png';
 export const RPG_DEBRIS_DROP_CHANCE = 0.33;
 export const RPG_DEBRIS_SCRAP_VALUE = 10;
 export const SPACE_BAR_ROUND_PRICE = 1000;
@@ -386,7 +387,7 @@ export class Game {
     async loadAssets() {
         this.assets = {
             ship: await this.loadImage('assets/ShipSketch_256x256.png'),
-            spraak: await this.loadImage('assets/spraak_wings_middle_356.png'),
+            spraak: await this.loadImage(SPRAAK_ASSET_PATH),
             ufo: await this.loadImage('assets/1000008891.png'),
             cyborg: await this.loadImage('assets/cyborg_ship.webp'),
             dimensionX: await this.loadImage('assets/dimension_x_monster.webp'),
