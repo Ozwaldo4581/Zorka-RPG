@@ -1,4 +1,4 @@
-import { updateNewtonian, checkCollision, nearestWrappedDisplacement, closestPointOnSegment } from '../physics.js';
+import { updateNewtonian, checkCollision, nearestWrappedDisplacement, closestPointOnSegment, getEmergencyBrakeForce } from '../physics.js';
 import { Projectile } from './projectile.js';
 import { DESIGN_WIDTH, DESIGN_HEIGHT, WORLD_WIDTH, WORLD_HEIGHT } from '../world_config.js';
 import { isVisibleForLifetimeWarning } from './lifetime_warning.js';
@@ -1133,16 +1133,15 @@ export class Player {
             this.isThrusting = false;
         } else {
             if (this.emergencyBrakeActive) {
-                const speed = Math.hypot(this.vx, this.vy);
                 const acceleration = this.getEffectiveThrust();
-                const reduction = acceleration * dt;
-                if (speed <= reduction) {
+                const brake = getEmergencyBrakeForce(this, acceleration, dt);
+                if (brake.stopped) {
                     this.vx = 0;
                     this.vy = 0;
                     this.emergencyBrakeActive = false;
                 } else {
-                    fx = -this.vx / speed * acceleration;
-                    fy = -this.vy / speed * acceleration;
+                    fx = brake.x;
+                    fy = brake.y;
                 }
             }
             updateNewtonian(this, dt, { x: fx, y: fy }, worldRules);
@@ -2344,6 +2343,55 @@ export class Player {
         ctx.restore();
     }
 
+    drawShipHealthBar(ctx, { showShields = true } = {}) {
+        ctx.save();
+        const hpBarWidth = 120;
+        const hpBarHeight = 8;
+        const hpBarY = this.radius * 2 + 10;
+        const hpBarX = -hpBarWidth / 2;
+        const hpBarRight = hpBarX + hpBarWidth;
+        const { blockCount: maxHP, gap, blockWidth } = getHPBlockLayout(this.maxHP, hpBarWidth);
+        const currentHP = Math.max(0, Math.min(maxHP, Math.floor(this.currentHP || 0)));
+
+        for (let index = 0; index < maxHP; index++) {
+            const blockX = hpBarX + index * (blockWidth + gap);
+            const renderedWidth = index === maxHP - 1 ? hpBarRight - blockX : blockWidth;
+            ctx.fillStyle = index < currentHP ? '#248cff' : 'rgba(36, 140, 255, 0.18)';
+            const pulseScale = index === currentHP - 1 ? this.getDamagePulseScale(this.hullLossPulseTimer) : 1;
+            const pulseWidth = renderedWidth * pulseScale;
+            const pulseHeight = hpBarHeight * pulseScale;
+            ctx.fillRect(
+                blockX - (pulseWidth - renderedWidth) / 2,
+                hpBarY - (pulseHeight - hpBarHeight) / 2,
+                pulseWidth,
+                pulseHeight
+            );
+            if (index >= currentHP && renderedWidth >= 1) {
+                ctx.strokeStyle = 'rgba(36, 140, 255, 0.7)';
+                ctx.lineWidth = Math.min(1, renderedWidth);
+                ctx.strokeRect(blockX, hpBarY, renderedWidth, hpBarHeight);
+            }
+        }
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 16px Orbitron';
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'right';
+        ctx.fillText(`${this.level}`, hpBarX - 8, hpBarY + hpBarHeight / 2);
+        if (showShields) {
+            ctx.textAlign = 'left';
+            const shieldTextX = hpBarRight + 8;
+            const shieldTextY = hpBarY + hpBarHeight / 2;
+            ctx.save();
+            ctx.translate(shieldTextX, shieldTextY);
+            const shieldPulseScale = this.getDamagePulseScale(this.shieldLossPulseTimer);
+            ctx.scale(shieldPulseScale, shieldPulseScale);
+            ctx.fillText(`${this.shieldCharges}/${this.maxShieldCharges}`, 0, 0);
+            ctx.restore();
+        }
+        ctx.restore();
+    }
+
     draw(ctx, assets, camera) {
         if (!this.isSpecterVisible()) return;
         // Draw Ghosts
@@ -2401,50 +2449,7 @@ export class Player {
         }
 
         // Ship-attached status uses this same wrapped camera transform as the ship and shield.
-        ctx.save();
-        const hpBarWidth = 120;
-        const hpBarHeight = 8;
-        const hpBarY = this.radius * 2 + 10;
-        const hpBarX = -hpBarWidth / 2;
-        const hpBarRight = hpBarX + hpBarWidth;
-        const { blockCount: maxHP, gap, blockWidth } = getHPBlockLayout(this.maxHP, hpBarWidth);
-        const currentHP = Math.max(0, Math.min(maxHP, Math.floor(this.currentHP || 0)));
-
-        for (let index = 0; index < maxHP; index++) {
-            const blockX = hpBarX + index * (blockWidth + gap);
-            const renderedWidth = index === maxHP - 1 ? hpBarRight - blockX : blockWidth;
-            ctx.fillStyle = index < currentHP ? '#248cff' : 'rgba(36, 140, 255, 0.18)';
-            const pulseScale = index === currentHP - 1 ? this.getDamagePulseScale(this.hullLossPulseTimer) : 1;
-            const pulseWidth = renderedWidth * pulseScale;
-            const pulseHeight = hpBarHeight * pulseScale;
-            ctx.fillRect(
-                blockX - (pulseWidth - renderedWidth) / 2,
-                hpBarY - (pulseHeight - hpBarHeight) / 2,
-                pulseWidth,
-                pulseHeight
-            );
-            if (index >= currentHP && renderedWidth >= 1) {
-                ctx.strokeStyle = 'rgba(36, 140, 255, 0.7)';
-                ctx.lineWidth = Math.min(1, renderedWidth);
-                ctx.strokeRect(blockX, hpBarY, renderedWidth, hpBarHeight);
-            }
-        }
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 16px Orbitron';
-        ctx.textBaseline = 'middle';
-        ctx.textAlign = 'right';
-        ctx.fillText(`${this.level}`, hpBarX - 8, hpBarY + hpBarHeight / 2);
-        ctx.textAlign = 'left';
-        const shieldTextX = hpBarRight + 8;
-        const shieldTextY = hpBarY + hpBarHeight / 2;
-        ctx.save();
-        ctx.translate(shieldTextX, shieldTextY);
-        const shieldPulseScale = this.getDamagePulseScale(this.shieldLossPulseTimer);
-        ctx.scale(shieldPulseScale, shieldPulseScale);
-        ctx.fillText(`${this.shieldCharges}/${this.maxShieldCharges}`, 0, 0);
-        ctx.restore();
-        ctx.restore();
+        this.drawShipHealthBar(ctx);
 
         // Spawn Immunity Flashing
         if (this.spawnImmunityTimer > 0) {
