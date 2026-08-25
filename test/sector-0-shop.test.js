@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { Player } from '../entities/player.js';
+import { Asteroid } from '../entities/asteroid.js';
 import { Game, GAME_MODE, SECTOR_0_WEAPON_CATALOG, SECTOR_0_UTILITY_CATALOG, SPACE_BAR_ROUND_PRICE,
     SHIP_MODIFICATION_PRICE, SHIP_MODIFICATION_IDS, SHIP_MODIFICATION_CAPS, getNPCCapsuleRewardCount } from '../game.js';
 import { createExperimentalAreas, isSector0ShopArea, EXPERIMENTAL_AREA_ROLE } from '../world/experimental_rooms.js';
@@ -235,6 +236,44 @@ test('Buy A Round atomically advances encounter level and keeps its flat price',
     Game.prototype.reconcileExperimentalOrdinaryNPCPopulation = reconcile;
     assert.deepEqual([player.scrap, encounter.npcLevel, game.reconciled], [0, 3, 2]);
     assert.equal(Game.prototype.getSpaceBarRoundOffer.call(game, player).price, SPACE_BAR_ROUND_PRICE);
+});
+
+test('Buy A Round advances future Spraak levels only after successful purchases', () => {
+    const player = new Player(0, 0, 1);
+    const spaceBar = areas.find(area => area.role === EXPERIMENTAL_AREA_ROLE.SPACE_BAR);
+    Object.assign(player, {
+        roomId: spaceBar.id,
+        experimentalLastCombatRoomId: room.id,
+        scrap: SPACE_BAR_ROUND_PRICE * 2
+    });
+    const encounter = { npcLevel: 1 };
+    const anchor = new Asteroid(400, 500, 'large');
+    anchor.roomId = room.id;
+    const game = {
+        ...shopGame(player), activeSector0Shop: 'SPACE_BAR',
+        experimentalEncounterStates: new Map([[room.id, encounter]]),
+        experimentalEntityAreas: null
+    };
+    const reconcile = Game.prototype.reconcileExperimentalOrdinaryNPCPopulation;
+    Game.prototype.reconcileExperimentalOrdinaryNPCPopulation = () => 0;
+    try {
+        const existing = Game.prototype.spawnSpraak.call(game, anchor, null, () => 0);
+        assert.equal(existing.level, 1);
+
+        assert.equal(Game.prototype.handleSpaceBarRoundIntent.call(game), true);
+        const levelTwo = Game.prototype.spawnSpraak.call(game, anchor, null, () => 0);
+        assert.deepEqual([existing.level, levelTwo.level, encounter.npcLevel], [1, 2, 2]);
+
+        assert.equal(Game.prototype.handleSpaceBarRoundIntent.call(game), true);
+        const levelThree = Game.prototype.spawnSpraak.call(game, anchor, null, () => 0);
+        assert.deepEqual([existing.level, levelTwo.level, levelThree.level, encounter.npcLevel], [1, 2, 3, 3]);
+
+        assert.equal(Game.prototype.handleSpaceBarRoundIntent.call(game), false);
+        const afterFailedPurchase = Game.prototype.spawnSpraak.call(game, anchor, null, () => 0);
+        assert.deepEqual([afterFailedPurchase.level, encounter.npcLevel], [3, 3]);
+    } finally {
+        Game.prototype.reconcileExperimentalOrdinaryNPCPopulation = reconcile;
+    }
 });
 
 test('encounter level derives ordinary NPC target and re-levels survivors while excluding Specters', () => {
