@@ -1,4 +1,4 @@
-import { Player } from './player.js';
+import { Player, getVibrationRenderOffset } from './player.js';
 import { getDirectionalForce, getEmergencyBrakeForce, updateNewtonian } from '../physics.js';
 
 export const SPRAAK_ENTITY_TYPE = 'SPRAAK';
@@ -9,13 +9,14 @@ export const SPRAAK_ACQUISITION_RANGE = 900;
 export const SPRAAK_GIVE_UP_RANGE = 1200;
 export const SPRAAK_HOOK_RANGE = 240;
 export const SPRAAK_DASH_DURATION = 0.75;
+export const SPRAAK_CHARGE_DURATION = 1.25;
 export const SPRAAK_PURSUIT_FORCE_MULTIPLIER = 0.8;
 export const SPRAAK_DASH_FORCE_MULTIPLIER = 24;
 export const SPRAAK_DASH_SPEED_MULTIPLIER = 10;
 
 export const SPRAAK_STATE = Object.freeze({
     ROAM: 'ASTEROID_ROAM', PURSUE: 'PURSUE', HOOK: 'HOOK_ORBIT',
-    BRAKE: 'EMERGENCY_BRAKE', DASH: 'DASH', RETURN: 'RETURN'
+    BRAKE: 'EMERGENCY_BRAKE', CHARGE: 'CHARGE', DASH: 'DASH', RETURN: 'RETURN'
 });
 
 export class Spraak extends Player {
@@ -83,6 +84,12 @@ export class Spraak extends Player {
         this.state = nextState;
     }
 
+    getChargeRenderOffset(now = Date.now()) {
+        return this.state === SPRAAK_STATE.CHARGE
+            ? getVibrationRenderOffset(now)
+            : { x: 0, y: 0 };
+    }
+
     update(dt, { others = [], asteroids = [], worldRules = null } = {}) {
         if (this.isDead || this.isEliminated) return;
         this.updateDamagePulses(dt);
@@ -130,18 +137,24 @@ export class Spraak extends Player {
             if (brake.stopped || this.stateTimer === 0) {
                 this.vx = 0;
                 this.vy = 0;
-                if (this.target) {
-                    const dx = this.target.x - this.x;
-                    const dy = this.target.y - this.y;
-                    const distance = Math.hypot(dx, dy) || 1;
-                    this.dashDirection = { x: dx / distance, y: dy / distance };
-                    this.rotation = Math.atan2(this.dashDirection.y, this.dashDirection.x) + Math.PI / 2;
-                }
-                this.state = SPRAAK_STATE.DASH;
-                this.stateTimer = SPRAAK_DASH_DURATION;
+                this.state = SPRAAK_STATE.CHARGE;
+                this.stateTimer = SPRAAK_CHARGE_DURATION;
             } else {
                 fx = brake.x;
                 fy = brake.y;
+            }
+        } else if (this.state === SPRAAK_STATE.CHARGE && this.target) {
+            this.vx = 0;
+            this.vy = 0;
+            this.stateTimer = Math.max(0, this.stateTimer - dt);
+            if (this.stateTimer === 0) {
+                const dx = this.target.x - this.x;
+                const dy = this.target.y - this.y;
+                const distance = Math.hypot(dx, dy) || 1;
+                this.dashDirection = { x: dx / distance, y: dy / distance };
+                this.rotation = Math.atan2(this.dashDirection.y, this.dashDirection.x) + Math.PI / 2;
+                this.state = SPRAAK_STATE.DASH;
+                this.stateTimer = SPRAAK_DASH_DURATION;
             }
         } else if (this.state === SPRAAK_STATE.DASH) {
             this.stateTimer = Math.max(0, this.stateTimer - dt);
@@ -178,6 +191,8 @@ export class Spraak extends Player {
         ctx.save();
         camera.apply(ctx, this.x, this.y);
         this.drawShipHealthBar(ctx, { showShields: false });
+        const chargeOffset = this.getChargeRenderOffset();
+        ctx.translate(chargeOffset.x, chargeOffset.y);
         ctx.rotate(this.rotation);
         const size = this.radius * 3.6;
         if (assets.spraak) ctx.drawImage(assets.spraak, -size / 2, -size / 2, size, size);

@@ -54,6 +54,13 @@ export const UTILITY_PRESENTATION = Object.freeze({
     '1/100 Black Hole': Object.freeze({ label: '1/100 Black Hole', input: '5' })
 });
 
+export function getVibrationRenderOffset(now = Date.now(), amplitude = 2.5) {
+    return {
+        x: Math.sin(now * 0.09) * amplitude,
+        y: Math.sin(now * 0.13 + Math.PI / 3) * amplitude
+    };
+}
+
 export function getHPBlockLayout(maxHP, totalWidth = 120, normalGap = 2, minimumBlockWidth = 0.5) {
     const blockCount = Math.max(1, Math.floor(Number(maxHP) || 1));
     const gap = Math.min(normalGap, Math.max(0, (totalWidth - blockCount * minimumBlockWidth) / Math.max(1, blockCount - 1)));
@@ -232,11 +239,7 @@ export class Player {
 
     getScrapMagnetRenderOffset(now = Date.now()) {
         if (!this.scrapMagnetActive || this.isNPC) return { x: 0, y: 0 };
-        const amplitude = 2.5;
-        return {
-            x: Math.sin(now * 0.09) * amplitude,
-            y: Math.sin(now * 0.13 + Math.PI / 3) * amplitude
-        };
+        return getVibrationRenderOffset(now);
     }
 
     activateBoost() {

@@ -4,7 +4,7 @@ import { Game, GAME_MODE, SPRAAK_ASSET_PATH, getSpraakXPReward } from '../game.j
 import { Asteroid } from '../entities/asteroid.js';
 import { Player } from '../entities/player.js';
 import {
-    Spraak, SPRAAK_DASH_DURATION, SPRAAK_DASH_FORCE_MULTIPLIER,
+    Spraak, SPRAAK_CHARGE_DURATION, SPRAAK_DASH_DURATION, SPRAAK_DASH_FORCE_MULTIPLIER,
     SPRAAK_ENTITY_TYPE, SPRAAK_PURSUIT_FORCE_MULTIPLIER, SPRAAK_SIZE_MULTIPLIER,
     SPRAAK_DASH_SPEED_MULTIPLIER, SPRAAK_STATE
 } from '../entities/spraak.js';
@@ -49,7 +49,7 @@ test('Large Asteroid Spraak rolls are deterministic and anchored safely', () => 
     assert.equal(Game.prototype.rollSpraakSpawn.call({ players: [] }, medium, () => 0), null);
 });
 
-test('Spraak behavior transitions through pursuit, hook, brake, and a doubled divebomb', () => {
+test('Spraak behavior transitions through pursuit, hook, brake, charge, and a doubled divebomb', () => {
     const spraak = new Spraak(0, 0, 1, () => 0.5);
     spraak.roomId = 'sector-1';
     const target = new Player(500, 0);
@@ -71,6 +71,15 @@ test('Spraak behavior transitions through pursuit, hook, brake, and a doubled di
     spraak.vx = 0;
     spraak.vy = 0;
     spraak.update(0.01, options);
+    assert.equal(spraak.state, SPRAAK_STATE.CHARGE);
+    assert.equal(spraak.stateTimer, SPRAAK_CHARGE_DURATION);
+    spraak.update(0.5, options);
+    assert.equal(spraak.state, SPRAAK_STATE.CHARGE);
+    assert.equal(spraak.stateTimer, SPRAAK_CHARGE_DURATION - 0.5);
+    spraak.update(SPRAAK_CHARGE_DURATION - 0.51, options);
+    assert.equal(spraak.state, SPRAAK_STATE.CHARGE);
+    assert.ok(spraak.stateTimer > 0);
+    spraak.update(spraak.stateTimer, options);
     assert.equal(spraak.state, SPRAAK_STATE.DASH);
     assert.equal(spraak.stateTimer, SPRAAK_DASH_DURATION);
     assert.equal(SPRAAK_DASH_DURATION, 0.75);
@@ -83,6 +92,31 @@ test('Spraak behavior transitions through pursuit, hook, brake, and a doubled di
     const velocityBefore = spraak.vx;
     spraak.update(0.05, options);
     assert.ok(spraak.vx - velocityBefore > spraak.getEffectiveThrust() * SPRAAK_PURSUIT_FORCE_MULTIPLIER * 0.05);
+});
+
+test('Spraak charge vibration is state-derived and never changes world position', () => {
+    const spraak = new Spraak(12, 34);
+    assert.deepEqual(spraak.getChargeRenderOffset(10), { x: 0, y: 0 });
+    spraak.state = SPRAAK_STATE.CHARGE;
+    assert.notDeepEqual(spraak.getChargeRenderOffset(10), { x: 0, y: 0 });
+    assert.notDeepEqual(spraak.getChargeRenderOffset(10), spraak.getChargeRenderOffset(20));
+    assert.deepEqual([spraak.x, spraak.y], [12, 34]);
+    spraak.state = SPRAAK_STATE.DASH;
+    assert.deepEqual(spraak.getChargeRenderOffset(20), { x: 0, y: 0 });
+    assert.deepEqual([spraak.x, spraak.y], [12, 34]);
+});
+
+test('Spraak cancels its charge when its target becomes invalid', () => {
+    const spraak = new Spraak(0, 0);
+    const target = new Player(100, 0);
+    Object.assign(spraak, { roomId: 'sector-1', target, state: SPRAAK_STATE.CHARGE,
+        stateTimer: SPRAAK_CHARGE_DURATION });
+    target.roomId = 'sector-1';
+    target.isDead = true;
+    spraak.update(0.1, { others: [spraak, target], asteroids: [], worldRules: { wrap: false } });
+    assert.equal(spraak.target, null);
+    assert.equal(spraak.state, SPRAAK_STATE.ROAM);
+    assert.deepEqual(spraak.getChargeRenderOffset(10), { x: 0, y: 0 });
 });
 
 test('Spraak rendering has no target pointer while retaining hook state', () => {
