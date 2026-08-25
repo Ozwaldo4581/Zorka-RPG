@@ -5071,21 +5071,23 @@ export class Game {
         // Award the confirmed kill before Hardcore clears the victim's progression.
         if (killer && killer !== player && typeof killer.addCapsule === 'function' && !player.noKillReward) {
             const isSpraak = player.entityType === SPRAAK_ENTITY_TYPE;
+            const isSpecter = player.isSpecter === true;
             if (isSpraak) {
                 Game.prototype.resolveSpraakKillReward.call(this, player, killer);
-            } else if (player.isNPC && !player.isSpecter) {
+            } else if (player.isNPC && !isSpecter) {
                 this.awardXP(killer, Game.prototype.getNPCXPReward.call(this, player), player);
             }
-            if (this.gameState === GAME_MODE.EXPERIMENTAL && player.isNPC && !isSpraak) {
+            if (this.gameState === GAME_MODE.EXPERIMENTAL && player.isNPC && isSpecter) {
+                const human = Game.prototype.getHumanPlayer.call(this);
+                const debrisCount = Math.floor(Math.max(0, Number(human?.scrap) || 0) * 0.1);
+                if (debrisCount > 0) {
+                    Game.prototype.spawnDebrisBurst.call(this, player.x, player.y, player.roomId, debrisCount);
+                }
+            } else if (this.gameState === GAME_MODE.EXPERIMENTAL && player.isNPC && !isSpraak) {
                 let debrisCount;
-                if (player.isSpecter) {
-                    const human = this.players.find(candidate => !candidate.isNPC);
-                    debrisCount = Math.floor(Math.max(0, Number(human?.scrap) || 0) * 0.1);
-                } else {
-                    debrisCount = 10;
-                    for (let level = 0; level < Math.max(0, Math.floor(player.level || 0)); level++) {
-                        if (Math.random() < 0.5) debrisCount++;
-                    }
+                debrisCount = 10;
+                for (let level = 0; level < Math.max(0, Math.floor(player.level || 0)); level++) {
+                    if (Math.random() < 0.5) debrisCount++;
                 }
                 if (debrisCount > 0) {
                     Game.prototype.spawnDebrisBurst.call(this, player.x, player.y, player.roomId, debrisCount);

@@ -14,6 +14,7 @@ import { EXPERIMENTAL_ROOM_WIDTH, EXPERIMENTAL_ROOM_HEIGHT, Game, GAME_MODE } fr
 import { Player } from '../entities/player.js';
 import { Projectile } from '../entities/projectile.js';
 import { HUD } from '../ui/hud.js';
+import { SPRAAK_ENTITY_TYPE } from '../entities/spraak.js';
 
 function createTopologyGame() {
   const experimentalRooms = createExperimentalAreas(EXPERIMENTAL_ROOM_WIDTH, EXPERIMENTAL_ROOM_HEIGHT);
@@ -219,4 +220,30 @@ test('Adventure minimap uses an undistorted full-world projection', () => {
     'one uniform projection scale preserves geometry');
   assert.deepEqual([owner.x, owner.y, nearby.x, nearby.y, distant.x, distant.y],
     [4800, 2700, 5760, 3240, room.bounds.right - 1, 2700]);
+});
+
+test('Adventure minimap excludes Spraaks without changing canonical players', () => {
+  const [room] = createExperimentalAreas(EXPERIMENTAL_ROOM_WIDTH, EXPERIMENTAL_ROOM_HEIGHT);
+  const human = { id: 1, x: 4800, y: 2700, roomId: room.id, color: '#00ffff' };
+  const npc = { id: 2, x: 5000, y: 2700, roomId: room.id, color: '#ff00ff', isNPC: true };
+  const spraak = {
+    id: 0, x: 5200, y: 2700, roomId: room.id, color: '#ffffff', isNPC: true,
+    entityType: SPRAAK_ENTITY_TYPE
+  };
+  const canonicalPlayers = [human, npc, spraak];
+  const markerColors = [];
+  const ctx = {
+    fillStyle: '', strokeStyle: '', lineWidth: 0,
+    fillRect() {}, strokeRect() {}, save() {}, restore() {}, rect() {}, clip() {},
+    beginPath() {}, stroke() {}, moveTo() {}, lineTo() {}, arc() {},
+    fill() { markerColors.push(this.fillStyle); }
+  };
+
+  HUD.prototype.drawMinimap.call({}, ctx, canonicalPlayers, [], {}, false, {
+    usesRooms: true, owner: human, rooms: [room], hazards: []
+  });
+
+  assert.deepEqual(markerColors, [human.color, npc.color]);
+  assert.equal(canonicalPlayers.includes(spraak), true, 'Spraak remains in the canonical source collection');
+  assert.equal(canonicalPlayers.length, 3);
 });

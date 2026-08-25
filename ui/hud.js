@@ -1,4 +1,5 @@
 import { UTILITY_IDS, UTILITY_PRESENTATION } from '../entities/player.js';
+import { SPRAAK_ENTITY_TYPE } from '../entities/spraak.js';
 
 export class HUD {
     constructor() {
@@ -687,6 +688,7 @@ export class HUD {
         // Players
         players.forEach(p => {
             if (p.isDead || p.isEliminated) return;
+            if (p.entityType === SPRAAK_ENTITY_TYPE) return;
             if (!belongsOnMap(p)) return;
             const point = positionOnMap(p);
             ctx.fillStyle = p.isExperimentalFleeingNPC

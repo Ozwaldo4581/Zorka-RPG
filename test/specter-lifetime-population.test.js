@@ -109,5 +109,8 @@ test('confirmed Specter kills grant no XP and drop floor ten percent of kill-tim
         assert.equal(human.totalXP, xpBefore);
         assert.equal(drops.length, expectedDebris);
         assert.ok(drops.every(drop => drop.x === 30 && drop.y === 40 && drop.id === roomId));
+        assert.equal(game.players.includes(specter), false, 'confirmed death removes the canonical Specter once');
+        Game.prototype.confirmPlayerDeath.call(game, specter, human, []);
+        assert.equal(drops.length, expectedDebris, 'repeated cleanup cannot duplicate the reward');
     }
 });
