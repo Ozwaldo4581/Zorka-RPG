@@ -382,6 +382,7 @@ test('Player primary selection defaults to Ballistic and rejects Missile and uno
 
 test('purchased progress, Missile acquisition, and selected primary survive death cleanup and respawn', () => {
     const player = new Player(0, 0, 1);
+    player.scrap = 220;
     for (const id of ['Antigun', 'Doublegun', 'Missile', 'Laser', 'Orb', 'Ghost']) player.weaponPurchaseTiers[id] = 1;
     player.restorePurchasedWeaponLoadout();
     player.equipPurchasedWeapon('Laser');
@@ -389,11 +390,13 @@ test('purchased progress, Missile acquisition, and selected primary survive deat
     player.currentHP = 1;
     player.spawnImmunityTimer = 0;
     const purchasedTiers = structuredClone(player.weaponPurchaseTiers);
+    let savedProfile = null;
     const game = Object.assign(Object.create(Game.prototype), { ...shopGame(player), gameState: GAME_MODE.EXPERIMENTAL, cameras: [], projectiles: [], audio: { play() {} }, vfx: [],
         isHardcoreActive: Game.prototype.isHardcoreActive, createExplosion() {}, playSpatialEvent() {},
         getActiveCameras() { return []; }, isCombatSourceLocked() { return false; }, canDamagePlayerTarget() { return true; },
         isSector9BBGDefender() { return false; }, isNPCDamageSource() { return false; },
-        experimentalProfiles: { updateProfile() {} } });
+        selectedExperimentalProfileSlot: 0,
+        experimentalProfiles: { updateProfile(slot, profile) { savedProfile = { slot, ...profile }; } } });
     globalThis.window = {};
     Game.prototype.playerDeath.call(game, player, null);
     delete globalThis.window;
@@ -404,6 +407,8 @@ test('purchased progress, Missile acquisition, and selected primary survive deat
     assert.equal(player.equippedPrimaryGun, 'Laser');
     assert.equal(player.powerUpCapsules, 0);
     assert.equal(player.missileAmmo, 0);
+    assert.equal(player.scrap, 0);
+    assert.deepEqual([savedProfile.slot, savedProfile.scrap], [0, 0]);
 
     player.resetTransientLifeState();
     assert.deepEqual(player.weaponPurchaseTiers, purchasedTiers);

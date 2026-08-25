@@ -9,7 +9,7 @@ const makeDamageGame = players => ({
     gameState: 'SOLO',
     hardcoreMode: false,
     startingShieldCharges: 0,
-    audio: { playSpatial() {} },
+    audio: { playSpatial() {}, startGameplayMusic() {} },
     getActiveCameras: () => [],
     clearAimLocksForTarget() {},
     createExplosion() {},
@@ -66,6 +66,35 @@ test('Game resolves immunity, shields, HP, death, and respawn in order', () => {
     victim.hpRechargeTimer = 20;
     Game.prototype.respawnPlayer.call(game, victim);
     assert.deepEqual([victim.isDead, victim.currentHP, victim.maxHP, victim.hpRechargeTimer], [false, 8, 8, 0]);
+});
+
+test('confirmed human death clears Scrap while damage and NPC death do not', () => {
+    globalThis.window = globalThis.window || {};
+    const human = new Player(0, 0, 1);
+    human.scrap = 220;
+    human.spawnImmunityTimer = 0;
+    human.configureShields(1, 6);
+    const game = makeDamageGame([human]);
+
+    Game.prototype.resolvePlayerDamage.call(game, human, 1);
+    assert.equal(human.scrap, 220, 'shield damage must preserve Scrap');
+    Game.prototype.resolvePlayerDamage.call(game, human, 1);
+    assert.equal(human.scrap, 220, 'nonlethal hull damage must preserve Scrap');
+
+    human.currentHP = 1;
+    Game.prototype.resolvePlayerDamage.call(game, human, 1);
+    assert.equal(human.scrap, 0, 'confirmed human death must clear Scrap immediately');
+    Game.prototype.respawnPlayer.call(game, human);
+    assert.equal(human.scrap, 0, 'respawn must retain the confirmed-death reset');
+
+    const npc = new Player(0, 0, 2);
+    npc.isNPC = true;
+    npc.scrap = 220;
+    npc.spawnImmunityTimer = 0;
+    npc.currentHP = 1;
+    const npcGame = makeDamageGame([npc]);
+    Game.prototype.resolvePlayerDamage.call(npcGame, npc, 1);
+    assert.equal(npc.scrap, 220, 'NPC death must not enter the human Scrap-reset path');
 });
 
 test('respawn refills only an acquired Missile clip and preserves its tier and selected primary', () => {
