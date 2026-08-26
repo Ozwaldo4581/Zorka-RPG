@@ -947,7 +947,8 @@ export class Player {
         isNPCTargetCandidate = null,
         allowTransformations = true,
         worldRules = null,
-        touchIntent = null
+        touchIntent = null,
+        movementAxisMode = 'RELATIVE'
     } = {}) {
         this.updateDamagePulses(dt);
         if (this.isDead) {
@@ -1072,7 +1073,12 @@ export class Player {
                 const inputY = Number(Boolean(keys['KeyS'])) - Number(Boolean(keys['KeyW']));
                 if (inputX !== 0 || inputY !== 0) {
                     this.emergencyBrakeActive = false;
-                    const force = this.getDirectionalThrust(inputX, inputY);
+                    const force = movementAxisMode === 'ABSOLUTE' && !aimTarget
+                        ? {
+                            x: inputX * this.getEffectiveThrust(),
+                            y: inputY * this.getEffectiveThrust()
+                        }
+                        : this.getDirectionalThrust(inputX, inputY);
                     fx += force.x;
                     fy += force.y;
                     this.isThrusting = true;

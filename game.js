@@ -190,6 +190,10 @@ export const TOUCH_JOYSTICK_RADIUS = 120;
 export const TOUCH_JOYSTICK_DEADZONE = 0.12;
 export const TOUCH_AIM_DRAG_THRESHOLD = 18;
 export const TOUCH_LOCK_HOLD_MS = 300;
+export const MOVEMENT_AXIS_MODE = Object.freeze({
+    RELATIVE: 'RELATIVE',
+    ABSOLUTE: 'ABSOLUTE'
+});
 
 export function normalizeTouchJoystick(deltaX, deltaY, radius = TOUCH_JOYSTICK_RADIUS, deadzone = TOUCH_JOYSTICK_DEADZONE) {
     const magnitude = Math.hypot(deltaX, deltaY);
@@ -349,6 +353,7 @@ export class Game {
         this.victoryScreenActive = false;
         this.victoryContinueConfirmationActive = false;
         this.selectedCursorStyle = 0; // Default crosshair
+        this.movementAxisMode = MOVEMENT_AXIS_MODE.RELATIVE;
         this.optionsOpenedFromPause = false;
 
         this.generateStars();
@@ -1095,6 +1100,14 @@ export class Game {
             });
         };
 
+        const refreshMovementAxisOptionButtons = () => {
+            document.querySelectorAll('.movement-axis-btn').forEach(btn => {
+                const selected = btn.dataset.movementAxis === this.movementAxisMode;
+                btn.classList.toggle('selected', selected);
+                btn.setAttribute('aria-pressed', String(selected));
+            });
+        };
+
         document.getElementById('btn-main-options-open').addEventListener('click', () => {
             this.optionsOpenedFromPause = false;
 
@@ -1103,6 +1116,7 @@ export class Game {
             popup.querySelectorAll('.focused').forEach(el => el.classList.remove('focused'));
             refreshAudioOptionButtons();
             this.refreshControlOptionButtons();
+            refreshMovementAxisOptionButtons();
 
             document.querySelectorAll('.cursor-option-btn').forEach(btn => {
                 btn.classList.toggle(
@@ -1179,6 +1193,13 @@ export class Game {
             this.startBtnWasPressed = false;
             this.refreshControlOptionButtons();
             event.stopPropagation();
+        });
+
+        document.querySelectorAll('.movement-axis-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                this.setMovementAxisMode(btn.dataset.movementAxis);
+                refreshMovementAxisOptionButtons();
+            });
         });
 
         document.querySelectorAll('.hardcore-btn').forEach(btn => {
@@ -1455,6 +1476,12 @@ export class Game {
                 }
             });
         }
+    }
+
+    setMovementAxisMode(mode) {
+        if (!Object.values(MOVEMENT_AXIS_MODE).includes(mode)) return false;
+        this.movementAxisMode = mode;
+        return true;
     }
 
     updateAggressionLabel(val) {
@@ -4106,7 +4133,8 @@ export class Game {
                         isAimTargetValid,
                         allowTransformations: this.areTransformationsEnabled(),
                         worldRules,
-                        touchIntent
+                        touchIntent,
+                        movementAxisMode: this.movementAxisMode
                     });
                     Game.prototype.applyBeamHookConstraint.call(this, player);
                     if (player.id === 1 && this.touch.persistentLock && !player.aimLockActive) this.touch.persistentLock = false;
