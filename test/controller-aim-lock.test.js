@@ -215,6 +215,41 @@ test('mouse acquisition padding remains wrap-aware across both world seams', () 
     assert.equal(findMouseTarget([target], 4, 4), target);
 });
 
+test('mouse aim position is absolute unless an actual mouse lock is active', () => {
+    const target = { x: 100, y: 100, radius: 10 };
+    const player = new Player(0, 0, 1);
+    player.controlMode = 'KEYBOARD';
+    const fakeGame = {
+        mouse: { x: 400, y: 300, m2Held: false },
+        scale: 2,
+        players: [player],
+        getMouseControlledPlayer: Game.prototype.getMouseControlledPlayer,
+        isValidAimLockTarget: () => true,
+        getDesignPoint: () => ({ x: 700, y: 500 })
+    };
+    const event = { movementX: 20, movementY: -10 };
+
+    Game.prototype.updateMouseAimPosition.call(fakeGame, event);
+    assert.deepEqual({ x: fakeGame.mouse.x, y: fakeGame.mouse.y }, { x: 700, y: 500 });
+
+    fakeGame.mouse.m2Held = true;
+    Game.prototype.updateMouseAimPosition.call(fakeGame, event);
+    assert.deepEqual({ x: fakeGame.mouse.x, y: fakeGame.mouse.y }, { x: 700, y: 500 });
+
+    player.beginAimLock(target);
+    Game.prototype.updateMouseAimPosition.call(fakeGame, event);
+    assert.deepEqual({ x: fakeGame.mouse.x, y: fakeGame.mouse.y }, { x: 710, y: 495 });
+
+    fakeGame.isValidAimLockTarget = () => false;
+    Game.prototype.updateMouseAimPosition.call(fakeGame, event);
+    assert.deepEqual({ x: fakeGame.mouse.x, y: fakeGame.mouse.y }, { x: 700, y: 500 });
+
+    fakeGame.mouse.m2Held = false;
+    fakeGame.isValidAimLockTarget = () => true;
+    Game.prototype.updateMouseAimPosition.call(fakeGame, event);
+    assert.deepEqual({ x: fakeGame.mouse.x, y: fakeGame.mouse.y }, { x: 700, y: 500 });
+});
+
 test('cursor visibility derives only from a valid keyboard Player 1 lock', () => {
     const p1 = new Player(0, 0, 1);
     p1.controlMode = 'KEYBOARD';

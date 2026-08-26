@@ -964,9 +964,7 @@ export class Game {
         window.addEventListener('keyup', (e) => this.keys[e.code] = false);
         window.addEventListener('mousemove', (e) => {
             this.cursorVisible = true;
-            const point = this.getDesignPoint(e);
-            this.mouse.x = point.x;
-            this.mouse.y = point.y;
+            this.updateMouseAimPosition(e);
 
             if (this.domCursor) {
                 this.domCursor.style.left = `${e.clientX}px`;
@@ -1726,6 +1724,28 @@ export class Game {
     getDesignPoint(event) {
         const rect = this.canvas.getBoundingClientRect();
         return { x: (event.clientX - rect.left) / this.scale, y: (event.clientY - rect.top) / this.scale };
+    }
+
+    updateMouseAimPosition(event) {
+        const player = this.getMouseControlledPlayer();
+        const target = player?.lockedAimTarget;
+        const hasActiveMouseLock = Boolean(
+            this.mouse.m2Held
+            && target
+            && Number.isFinite(target.x)
+            && Number.isFinite(target.y)
+            && this.isValidAimLockTarget(player, target)
+        );
+
+        if (hasActiveMouseLock) {
+            this.mouse.x += event.movementX / this.scale;
+            this.mouse.y += event.movementY / this.scale;
+            return;
+        }
+
+        const point = this.getDesignPoint(event);
+        this.mouse.x = point.x;
+        this.mouse.y = point.y;
     }
 
     canAcceptGameplayTouch() {
