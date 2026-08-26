@@ -215,6 +215,55 @@ test('mouse acquisition padding remains wrap-aware across both world seams', () 
     assert.equal(findMouseTarget([target], 4, 4), target);
 });
 
+test('mouse aim reaches Player rotation as absolute unless an actual mouse lock is active', () => {
+    const target = { x: 100, y: 100, radius: 10 };
+    const player = new Player(0, 0, 1);
+    player.controlMode = 'KEYBOARD';
+    const fakeGame = {
+        mouse: { x: 400, y: 300, m2Held: false },
+        scale: 2,
+        players: [player],
+        getMouseControlledPlayer: Game.prototype.getMouseControlledPlayer,
+        isValidAimLockTarget: () => true,
+        getDesignPoint: () => ({ x: 700, y: 500 })
+    };
+    const event = { movementX: 20, movementY: -10 };
+    const updateAim = (targetIsValid = () => true) => player.update(0, {
+        keys: {},
+        mouse: fakeGame.mouse,
+        isAimTargetValid: targetIsValid
+    });
+    const expectedRotation = (x, y) => Math.atan2(y - 540, x - 960) + Math.PI / 2;
+
+    Game.prototype.updateMouseAimPosition.call(fakeGame, event);
+    updateAim();
+    assert.equal(player.rotation, expectedRotation(700, 500));
+
+    fakeGame.mouse.m2Held = true;
+    Game.prototype.updateMouseAimPosition.call(fakeGame, event);
+    updateAim();
+    assert.equal(player.rotation, expectedRotation(700, 500));
+
+    player.beginAimLock(target);
+    Game.prototype.updateMouseAimPosition.call(fakeGame, event);
+    updateAim();
+    assert.equal(player.rotation, expectedRotation(710, 495));
+
+    fakeGame.isValidAimLockTarget = () => false;
+    Game.prototype.updateMouseAimPosition.call(fakeGame, event);
+    updateAim(() => false);
+    assert.equal(player.rotation, expectedRotation(700, 500));
+    assert.equal(player.aimLockActive, false);
+
+    player.beginAimLock(target);
+    fakeGame.mouse.m2Held = false;
+    fakeGame.isValidAimLockTarget = () => true;
+    Game.prototype.updateMouseAimPosition.call(fakeGame, event);
+    updateAim();
+    assert.equal(player.rotation, expectedRotation(700, 500));
+    assert.equal(player.aimLockActive, false);
+});
+
 test('cursor visibility derives only from a valid keyboard Player 1 lock', () => {
     const p1 = new Player(0, 0, 1);
     p1.controlMode = 'KEYBOARD';
