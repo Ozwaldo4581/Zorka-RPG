@@ -1052,19 +1052,20 @@ export class Player {
                 if (!touchIntent?.preserveAimLock && (mouse.m2Released || !mouse.m2Held)) this.clearAimLock();
 
                 const aimTarget = this.resolveAimLock(isAimTargetValid);
-                if (aimTarget) {
-                    const delta = worldRules?.wrap === false
-                        ? { x: aimTarget.x - this.x, y: aimTarget.y - this.y }
-                        : nearestWrappedDisplacement(this.x, this.y, aimTarget.x, aimTarget.y);
-                    if (Math.hypot(delta.x, delta.y) > 2) {
-                        this.rotation = Math.atan2(delta.y, delta.x) + Math.PI / 2;
-                    }
-                } else {
+                const usesRelativeMouseAim = Boolean(aimTarget && mouse.m2Held && !touchIntent?.preserveAimLock);
+                if (usesRelativeMouseAim || !aimTarget) {
                     const dx = mouse.x - anchorX;
                     const dy = mouse.y - (DESIGN_HEIGHT / 2);
                     const mouseDeadzone = 2;
                     if (Math.abs(dx) > mouseDeadzone || Math.abs(dy) > mouseDeadzone || mouse.clicked) {
                         this.rotation = Math.atan2(dy, dx) + Math.PI / 2;
+                    }
+                } else {
+                    const delta = worldRules?.wrap === false
+                        ? { x: aimTarget.x - this.x, y: aimTarget.y - this.y }
+                        : nearestWrappedDisplacement(this.x, this.y, aimTarget.x, aimTarget.y);
+                    if (Math.hypot(delta.x, delta.y) > 2) {
+                        this.rotation = Math.atan2(delta.y, delta.x) + Math.PI / 2;
                     }
                 }
                 const inputX = Number(Boolean(keys['KeyD'])) - Number(Boolean(keys['KeyA']));
